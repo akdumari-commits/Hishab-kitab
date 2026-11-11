@@ -5,6 +5,9 @@ on:
   push:
     branches: [ "main" ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,8 +35,14 @@ jobs:
         GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=\"-Xmx4096m -Djava.awt.headless=true\""
       run: gradle assembleDebug --no-daemon
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+    - name: Rename APK for release
+      run: cp app/build/outputs/apk/debug/*.apk ./app-debug.apk
+
+    - name: Publish GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/*.apk
+        tag_name: latest
+        name: "Latest App Build"
+        files: app-debug.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

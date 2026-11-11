@@ -25,26 +25,35 @@ jobs:
     - name: Generate debug keystore
       run: |
         keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-        cp debug.keystore app/debug.keystore 2>/dev/null || true
+        cp debug.keystore kitab/app/debug.keystore 2>/dev/null || cp debug.keystore kitab/debug.keystore 2>/dev/null || true
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
-      with:
-        gradle-version: '8.7'
+
+    - name: Make gradlew executable
+      working-directory: ./kitab
+      run: chmod +x ./gradlew
 
     - name: Build Debug APK
+      working-directory: ./kitab
       env:
         GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=\"-Xmx4096m -Djava.awt.headless=true\""
-      run: gradle assembleDebug --no-daemon
+      run: ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Rename APK for release
-      run: cp app/build/outputs/apk/debug/*.apk ./app-debug.apk
+      run: cp kitab/app/build/outputs/apk/debug/*.apk ./app-debug.apk
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug
+        path: ./app-debug.apk
 
     - name: Publish GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: latest
         name: "Latest App Build"
-        files: app-debug.apk
+        files: ./app-debug.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

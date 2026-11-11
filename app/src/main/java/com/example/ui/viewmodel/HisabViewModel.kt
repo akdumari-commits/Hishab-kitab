@@ -40,6 +40,13 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
     val currentScreen: StateFlow<Screen> = _screenStack.map { it.lastOrNull() ?: Screen.LOGIN }
         .stateIn(viewModelScope, SharingStarted.Eagerly, Screen.LOGIN)
 
+    val autoOpenAddCustomer = androidx.compose.runtime.mutableStateOf(false)
+
+    fun openAddCustomer() {
+        autoOpenAddCustomer.value = true
+        navigateTo(Screen.CUSTOMERS)
+    }
+
     fun navigateTo(screen: Screen) {
         val currentList = _screenStack.value.toMutableList()
         // If bottom nav tab, reset stack to that tab or avoid infinite deep stacks
@@ -223,6 +230,16 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateCustomerPhoto(customerId: String, photoUri: String) {
+        viewModelScope.launch {
+            val customer = customersWithBalances.value.find { it.customer.id == customerId }?.customer
+            if (customer != null) {
+                repository.saveCustomer(customer.copy(photoUri = photoUri))
+                showMessage(string("success"))
+            }
+        }
+    }
+
     fun deleteCustomer(customer: CustomerEntity) {
         viewModelScope.launch {
             repository.deleteCustomer(customer)
@@ -313,6 +330,8 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Backup & Restore
+    val lastBackupTime: StateFlow<Long> = repository.lastBackupTime
+
     fun exportBackup(onResult: (String?) -> Unit) {
         viewModelScope.launch {
             val res = repository.exportBackupJson()
@@ -326,13 +345,60 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun restoreBackup(jsonString: String) {
+    fun saveBackupToUri(uri: android.net.Uri, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            val res = repository.restoreBackupJson(jsonString)
-            res.onSuccess { count ->
-                showMessage("${string("restore_success")} ($count records)")
+            val res = repository.saveBackupToUri(uri)
+            res.onSuccess {
+                showMessage(string("backup_success"))
+                onResult(true)
             }.onFailure {
                 showMessage(it.message ?: string("error"))
+                onResult(false)
+            }
+        }
+    }
+
+    fun createBackupFileForShare(onResult: (java.io.File?) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.createBackupFile()
+            res.onSuccess { file ->
+                onResult(file)
+            }.onFailure {
+                showMessage(it.message ?: string("error"))
+                onResult(null)
+            }
+        }
+    }
+
+    fun readBackupFromUri(uri: android.net.Uri, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.readBackupFromUri(uri)
+            res.onSuccess { content ->
+                onResult(content)
+            }.onFailure {
+                showMessage(it.message ?: string("error"))
+                onResult(null)
+            }
+        }
+    }
+
+    fun parseBackupInfo(jsonString: String): Result<BackupMetadata> {
+        return repository.parseBackupInfo(jsonString)
+    }
+
+    fun restoreBackupWithOption(
+        jsonString: String,
+        replaceExisting: Boolean,
+        onResult: (Result<RestoreResult>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val res = repository.restoreBackup(jsonString, replaceExisting)
+            res.onSuccess { result ->
+                showMessage("${string("restore_success")} (${result.customerCount} customers, ${result.transactionCount} entries)")
+                onResult(Result.success(result))
+            }.onFailure {
+                showMessage(it.message ?: string("error"))
+                onResult(Result.failure(it))
             }
         }
     }

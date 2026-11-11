@@ -1,6 +1,8 @@
 package com.example
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -27,6 +29,25 @@ import com.example.ui.viewmodel.HisabViewModel
 import com.example.ui.viewmodel.Screen
 
 class MainActivity : ComponentActivity() {
+    private var lastKeyDownTime = 0L
+    private var lastKeyDownCode = -1
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_MULTIPLE) {
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val now = SystemClock.uptimeMillis()
+            // In browser streaming emulators, duplicate hardware KeyDown events fire within ~200ms
+            if (event.keyCode == lastKeyDownCode && (now - lastKeyDownTime) < 200L) {
+                return true
+            }
+            lastKeyDownTime = now
+            lastKeyDownCode = event.keyCode
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Enable true immersive edge-to-edge with transparent status & navigation bars

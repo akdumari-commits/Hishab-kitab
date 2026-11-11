@@ -27,8 +27,10 @@ import com.example.data.model.TransactionEntity
 import com.example.localization.AppStrings
 import com.example.ui.components.*
 import com.example.ui.theme.*
+import androidx.core.content.FileProvider
 import com.example.ui.viewmodel.HisabViewModel
 import com.example.ui.viewmodel.Screen
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -114,7 +116,7 @@ fun ReportsScreen(viewModel: HisabViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .testTag("reports_scroll_list"),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Period Filter Selector
@@ -329,13 +331,38 @@ fun ReportsScreen(viewModel: HisabViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
-                                        Text(cwb.customer.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
-                                        Text(cwb.customer.phone, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        CustomerAvatarBadge(
+                                            photoUri = cwb.customer.photoUri,
+                                            customerName = cwb.customer.name,
+                                            size = 36.dp,
+                                            badgeSize = 13.dp,
+                                            isGot = true
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = cwb.customer.name,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = cwb.customer.phone,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                     Text(
                                         text = formatCurrency(cwb.netBalance),
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = CreditGreen)
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = CreditGreen),
+                                        maxLines = 1
                                     )
                                 }
                             }
@@ -344,43 +371,96 @@ fun ReportsScreen(viewModel: HisabViewModel) {
                 }
             }
 
-            // Export Actions (PDF / Statement Share & CSV)
+            // Export Actions Card (PDF / Statement Share & CSV)
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Button(
-                        onClick = {
-                            exportPeriodReport(context, user?.businessName, selectedPeriod, totalGot, totalGave, periodTransactions)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .testTag("btn_export_pdf_report")
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(AppStrings.get("export_pdf", language))
-                    }
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FileDownload,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (language == com.example.localization.AppLanguage.HINDI) "स्टेटमेंट शेयर व डेटा एक्सपोर्ट" else "Statements & Data Export",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                )
+                                Text(
+                                    text = if (language == com.example.localization.AppLanguage.HINDI) "पीडीएफ स्टेटमेंट शेयर करें या एक्सेल सीएसवी फाइल डाउनलोड करें" else "Share printable financial statement or export Excel CSV spreadsheet",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
 
-                    OutlinedButton(
-                        onClick = {
-                            exportCsvReport(context, user?.businessName, periodTransactions)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .testTag("btn_export_csv_report")
-                    ) {
-                        Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(AppStrings.get("export_csv", language))
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Share PDF Statement Button (Full-width, spacious, never partially hidden)
+                        Button(
+                            onClick = {
+                                exportPeriodReport(context, user?.businessName, selectedPeriod, totalGot, totalGave, periodTransactions)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 50.dp)
+                                .testTag("btn_export_pdf_report")
+                        ) {
+                            Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = AppStrings.get("export_pdf", language),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Export CSV Button (Full-width, spacious, never partially hidden)
+                        OutlinedButton(
+                            onClick = {
+                                exportCsvReport(context, user?.businessName, periodTransactions)
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 50.dp)
+                                .testTag("btn_export_csv_report")
+                        ) {
+                            Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = AppStrings.get("export_csv", language),
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(36.dp))
             }
         }
     }
@@ -411,12 +491,26 @@ fun exportPeriodReport(
         appendLine("Generated by Hisab Pro Digital Khata")
     }
 
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "$store - Business Report ($period)")
-        putExtra(Intent.EXTRA_TEXT, content)
+    try {
+        val file = File(context.cacheDir, "hisab_statement_${period.lowercase()}.txt")
+        file.writeText(content)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "$store - Business Report ($period)")
+            putExtra(Intent.EXTRA_TEXT, content)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share PDF / Statement"))
+    } catch (e: Exception) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "$store - Business Report ($period)")
+            putExtra(Intent.EXTRA_TEXT, content)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Business Report"))
     }
-    context.startActivity(Intent.createChooser(intent, "Share Business Report"))
 }
 
 fun exportCsvReport(context: Context, bizName: String?, txns: List<TransactionEntity>) {
@@ -428,10 +522,24 @@ fun exportCsvReport(context: Context, bizName: String?, txns: List<TransactionEn
         }
     }
 
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/csv"
-        putExtra(Intent.EXTRA_SUBJECT, "${bizName ?: "HisabPro"}_transactions.csv")
-        putExtra(Intent.EXTRA_TEXT, csv)
+    try {
+        val file = File(context.cacheDir, "hisab_transactions_${System.currentTimeMillis()}.csv")
+        file.writeText(csv)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_SUBJECT, "${bizName ?: "HisabPro"}_transactions.csv")
+            putExtra(Intent.EXTRA_TEXT, "Exported ledger transactions from Hisab Pro (${txns.size} entries)")
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Export CSV"))
+    } catch (e: Exception) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_SUBJECT, "${bizName ?: "HisabPro"}_transactions.csv")
+            putExtra(Intent.EXTRA_TEXT, csv)
+        }
+        context.startActivity(Intent.createChooser(intent, "Export CSV"))
     }
-    context.startActivity(Intent.createChooser(intent, "Export CSV"))
 }

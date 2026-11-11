@@ -39,7 +39,10 @@ class ExampleUnitTest {
             "dashboard_title",
             "customers_title",
             "reminder_title",
-            "receipt_title"
+            "receipt_title",
+            "backup_restore",
+            "export_backup",
+            "import_backup"
         )
 
         for (key in essentialKeys) {
@@ -51,5 +54,34 @@ class ExampleUnitTest {
             assertNotEquals("Hindi key returned key placeholder: $key", key, hi)
             assertNotEquals("English key returned key placeholder: $key", key, en)
         }
+    }
+
+    @Test
+    fun testSingleKeyFilterDeduplication() {
+        val filter = com.example.util.SingleKeyFilter(cooldownMs = 300L)
+
+        // 1. Double batch insertion: user typed '5', but streaming emulator injected "55"
+        val out1 = filter.filter("", "55")
+        assertEquals("5", out1)
+
+        // 2. Triple batch insertion
+        val out2 = filter.filter("10", "10999")
+        assertEquals("109", out2)
+
+        // 3. Middle cursor insertion
+        val out3 = filter.filter("12", "1552")
+        assertEquals("152", out3)
+
+        // 4. Rapid duplicate event of same character within 300ms -> ignored
+        val rapidDup = filter.filter("5", "55")
+        assertEquals("5", rapidDup)
+
+        // 5. Subsequent different character: user types '0' (length +1) -> instant
+        val outDiff = filter.filter("5", "50")
+        assertEquals("50", outDiff)
+
+        // 6. User backspaces: length decreases
+        val outBack = filter.filter("50", "5")
+        assertEquals("5", outBack)
     }
 }

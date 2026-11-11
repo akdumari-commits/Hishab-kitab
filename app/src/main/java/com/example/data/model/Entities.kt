@@ -29,6 +29,7 @@ data class CustomerEntity(
     val openingBalance: Double = 0.0,
     val openingBalanceType: String = "GET", // GET (Receivable), GIVE (Payable), ZERO
     val notes: String = "",
+    val photoUri: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -82,3 +83,19 @@ data class DashboardSummary(
     val monthlyGave: Double,
     val monthlyGot: Double
 )
+
+data class BackupMetadata(
+    val version: String,
+    val exportedAt: Long,
+    val businessName: String,
+    val ownerName: String,
+    val customerCount: Int,
+    val transactionCount: Int
+)
+
+data class RestoreResult(
+    val customerCount: Int,
+    val transactionCount: Int,
+    val businessName: String
+)
+

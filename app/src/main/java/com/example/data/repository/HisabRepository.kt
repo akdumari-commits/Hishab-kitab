@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import com.example.data.db.HisabDatabase
 import com.example.data.model.*
 import com.example.localization.AppLanguage
@@ -12,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.*
@@ -26,6 +28,9 @@ class HisabRepository(private val context: Context) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences("hisab_pro_prefs", Context.MODE_PRIVATE)
+
+    private val _lastBackupTime = MutableStateFlow(prefs.getLong("last_backup_time", 0L))
+    val lastBackupTime: StateFlow<Long> = _lastBackupTime.asStateFlow()
 
     private val _currentUserId = MutableStateFlow(prefs.getString("active_user_id", null))
     val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
@@ -538,8 +543,10 @@ class HisabRepository(private val context: Context) {
             val transactions = transactionDao.getTransactionsForUser(uid).first()
 
             val root = JSONObject()
-            root.put("version", "1.0")
-            root.put("exportedAt", System.currentTimeMillis())
+            root.put("version", "2.0")
+            root.put("app", "Hisab Pro")
+            val now = System.currentTimeMillis()
+            root.put("exportedAt", now)
 
             val userObj = JSONObject().apply {
                 put("id", user.id)
@@ -586,64 +593,151 @@ class HisabRepository(private val context: Context) {
             }
             root.put("transactions", txnsArr)
 
-            prefs.edit().putLong("last_backup_time", System.currentTimeMillis()).apply()
+            prefs.edit().putLong("last_backup_time", now).apply()
+            _lastBackupTime.value = now
             Result.success(root.toString(2))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun restoreBackupJson(jsonString: String): Result<Int> = withContext(Dispatchers.IO) {
+    suspend fun createBackupFile(): Result<File> = withContext(Dispatchers.IO) {
         try {
-            val uid = _currentUserId.value ?: return@withContext Result.failure(Exception("No user logged in"))
-            val root = JSONObject(jsonString)
-            val customersArr = root.optJSONArray("customers") ?: JSONArray()
-            val txnsArr = root.optJSONArray("transactions") ?: JSONArray()
+            val jsonRes = exportBackupJson()
+            if (jsonRes.isFailure) return@withContext Result.failure(jsonRes.exceptionOrNull()!!)
+            val jsonString = jsonRes.getOrThrow()
 
-            var count = 0
-            for (i in 0 until customersArr.length()) {
-                val cObj = customersArr.getJSONObject(i)
-                val customer = CustomerEntity(
-                    id = cObj.getString("id"),
-                    userId = uid,
-                    name = cObj.getString("name"),
-                    phone = cObj.optString("phone", ""),
-                    whatsapp = cObj.optString("whatsapp", ""),
-                    address = cObj.optString("address", ""),
-                    customerType = cObj.optString("customerType", "CUSTOMER"),
-                    openingBalance = cObj.optDouble("openingBalance", 0.0),
-                    openingBalanceType = cObj.optString("openingBalanceType", "ZERO"),
-                    notes = cObj.optString("notes", ""),
-                    createdAt = cObj.optLong("createdAt", System.currentTimeMillis()),
-                    updatedAt = cObj.optLong("updatedAt", System.currentTimeMillis())
-                )
-                customerDao.insertCustomer(customer)
-                count++
-            }
+            val backupDir = File(context.cacheDir, "backups")
+            if (!backupDir.exists()) backupDir.mkdirs()
 
-            for (i in 0 until txnsArr.length()) {
-                val tObj = txnsArr.getJSONObject(i)
-                val txn = TransactionEntity(
-                    id = tObj.getString("id"),
-                    userId = uid,
-                    customerId = tObj.getString("customerId"),
-                    type = tObj.getString("type"),
-                    amount = tObj.getDouble("amount"),
-                    dateMillis = tObj.getLong("dateMillis"),
-                    remarks = tObj.optString("remarks", ""),
-                    paymentMethod = tObj.optString("paymentMethod", "CASH"),
-                    billNumber = tObj.optString("billNumber", ""),
-                    createdAt = tObj.optLong("createdAt", System.currentTimeMillis())
-                )
-                transactionDao.insertTransaction(txn)
-                count++
-            }
-
-            Result.success(count)
+            val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+            val filename = "Hisab_Pro_Backup_${sdf.format(Date())}.json"
+            val file = File(backupDir, filename)
+            file.writeText(jsonString)
+            Result.success(file)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    suspend fun saveBackupToUri(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val jsonRes = exportBackupJson()
+            if (jsonRes.isFailure) return@withContext Result.failure(jsonRes.exceptionOrNull()!!)
+            val jsonString = jsonRes.getOrThrow()
+
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                outputStream.write(jsonString.toByteArray(Charsets.UTF_8))
+                outputStream.flush()
+            } ?: return@withContext Result.failure(Exception("Cannot open file output stream"))
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun readBackupFromUri(uri: Uri): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val content = inputStream.bufferedReader(Charsets.UTF_8).readText()
+                Result.success(content)
+            } ?: Result.failure(Exception("Cannot open file input stream"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun parseBackupInfo(jsonString: String): Result<BackupMetadata> {
+        return try {
+            val root = JSONObject(jsonString)
+            val userObj = root.optJSONObject("user")
+            val bizName = userObj?.optString("businessName", "Hisab Store") ?: "Hisab Store"
+            val owner = userObj?.optString("name", "") ?: ""
+            val exportedAt = root.optLong("exportedAt", System.currentTimeMillis())
+            val version = root.optString("version", "1.0")
+            val customersArr = root.optJSONArray("customers") ?: JSONArray()
+            val txnsArr = root.optJSONArray("transactions") ?: JSONArray()
+
+            Result.success(
+                BackupMetadata(
+                    version = version,
+                    exportedAt = exportedAt,
+                    businessName = bizName,
+                    ownerName = owner,
+                    customerCount = customersArr.length(),
+                    transactionCount = txnsArr.length()
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(Exception("Invalid Hisab Pro backup file: ${e.message}"))
+        }
+    }
+
+    suspend fun restoreBackup(jsonString: String, replaceExisting: Boolean = false): Result<RestoreResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val uid = _currentUserId.value ?: return@withContext Result.failure(Exception("No user logged in"))
+                val root = JSONObject(jsonString)
+                val userObj = root.optJSONObject("user")
+                val bizName = userObj?.optString("businessName", "Store") ?: "Store"
+
+                if (replaceExisting) {
+                    transactionDao.deleteAllTransactionsForUser(uid)
+                    customerDao.deleteAllCustomersForUser(uid)
+                }
+
+                val customersArr = root.optJSONArray("customers") ?: JSONArray()
+                val txnsArr = root.optJSONArray("transactions") ?: JSONArray()
+
+                var custCount = 0
+                for (i in 0 until customersArr.length()) {
+                    val cObj = customersArr.getJSONObject(i)
+                    val customer = CustomerEntity(
+                        id = cObj.getString("id"),
+                        userId = uid,
+                        name = cObj.getString("name"),
+                        phone = cObj.optString("phone", ""),
+                        whatsapp = cObj.optString("whatsapp", ""),
+                        address = cObj.optString("address", ""),
+                        customerType = cObj.optString("customerType", "CUSTOMER"),
+                        openingBalance = cObj.optDouble("openingBalance", 0.0),
+                        openingBalanceType = cObj.optString("openingBalanceType", "ZERO"),
+                        notes = cObj.optString("notes", ""),
+                        createdAt = cObj.optLong("createdAt", System.currentTimeMillis()),
+                        updatedAt = cObj.optLong("updatedAt", System.currentTimeMillis())
+                    )
+                    customerDao.insertCustomer(customer)
+                    custCount++
+                }
+
+                var txnCount = 0
+                for (i in 0 until txnsArr.length()) {
+                    val tObj = txnsArr.getJSONObject(i)
+                    val txn = TransactionEntity(
+                        id = tObj.getString("id"),
+                        userId = uid,
+                        customerId = tObj.getString("customerId"),
+                        type = tObj.getString("type"),
+                        amount = tObj.getDouble("amount"),
+                        dateMillis = tObj.getLong("dateMillis"),
+                        remarks = tObj.optString("remarks", ""),
+                        paymentMethod = tObj.optString("paymentMethod", "CASH"),
+                        billNumber = tObj.optString("billNumber", ""),
+                        createdAt = tObj.optLong("createdAt", System.currentTimeMillis())
+                    )
+                    transactionDao.insertTransaction(txn)
+                    txnCount++
+                }
+
+                val now = System.currentTimeMillis()
+                prefs.edit().putLong("last_backup_time", now).apply()
+                _lastBackupTime.value = now
+
+                Result.success(RestoreResult(custCount, txnCount, bizName))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
 
     fun getLastBackupTime(): Long {
         return prefs.getLong("last_backup_time", 0L)

@@ -1,7 +1,9 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -16,12 +18,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.R
 import com.example.localization.AppLanguage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.Screen
@@ -32,7 +39,6 @@ import java.util.*
 fun formatCurrency(amount: Double): String {
     val formatter = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
     val formatted = formatter.format(kotlin.math.abs(amount))
-    // Replace INR or Rs. with ₹ symbol
     return formatted.replace("INR", "₹").replace("Rs.", "₹").trim()
 }
 
@@ -95,19 +101,23 @@ fun HisabTopAppBar(
                     )
                 }
             } else {
-                Box(
+                // Attractive custom app logo in Top Bar
+                Surface(
+                    shape = CircleShape,
+                    shadowElevation = 2.dp,
+                    color = Color(0xFF0A5C36),
                     modifier = Modifier
                         .padding(start = 12.dp, end = 8.dp)
                         .size(36.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AccountBalanceWallet,
-                        contentDescription = "Logo",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_hisab_logo),
+                        contentDescription = "Hisab Pro Logo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(2.dp)
+                            .clip(CircleShape)
                     )
                 }
             }
@@ -166,94 +176,273 @@ fun LanguageToggleChip(
     }
 }
 
+/**
+ * Composite avatar for customers with photo or upload/camera icon,
+ * plus a small directional arrow badge (↑ gave/debit, ↓ got/credit) near the image icon.
+ */
+@Composable
+fun CustomerAvatarBadge(
+    photoUri: String?,
+    customerName: String,
+    modifier: Modifier = Modifier,
+    isGot: Boolean? = null, // null = no arrow; true = Got (green ↓); false = Gave (red ↑)
+    size: Dp = 42.dp,
+    badgeSize: Dp = 16.dp,
+    showUploadIndicator: Boolean = false,
+    onAvatarClick: (() -> Unit)? = null
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .then(
+                if (onAvatarClick != null) Modifier.clickable(onClick = onAvatarClick)
+                else Modifier
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        val hasPhoto = !photoUri.isNullOrBlank()
+
+        // Main customer circle
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(
+                    if (hasPhoto) MaterialTheme.colorScheme.surfaceVariant
+                    else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f)
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (hasPhoto) {
+                AsyncImage(
+                    model = photoUri,
+                    contentDescription = customerName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                val initial = customerName.trim().firstOrNull()?.uppercase() ?: "C"
+                Text(
+                    text = initial,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (size.value * 0.42f).sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+
+            // Image upload icon indicator overlay when specified
+            if (showUploadIndicator) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "Upload Photo",
+                        tint = Color.White,
+                        modifier = Modifier.size((size.value * 0.38f).dp)
+                    )
+                }
+            }
+        }
+
+        // Small directional arrow badge attached near the image circle (bottom-end corner)
+        if (isGot != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(badgeSize)
+                    .clip(CircleShape)
+                    .background(if (isGot) CreditGreen else DebitRed)
+                    .border(1.dp, Color.White, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isGot) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                    contentDescription = if (isGot) "Got" else "Gave",
+                    tint = Color.White,
+                    modifier = Modifier.size((badgeSize.value * 0.65f).dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Thinner, modern and beautiful footer navigation bar.
+ * Prevents text wrapping onto multiple lines and provides a balanced, compact aesthetic.
+ */
 @Composable
 fun HisabBottomNav(
     currentScreen: Screen,
     onNavigate: (Screen) -> Unit,
     strings: (String) -> Unit = {}
 ) {
-    NavigationBar(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("bottom_nav_bar"),
-        windowInsets = NavigationBarDefaults.windowInsets,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp
     ) {
-        NavigationBarItem(
-            selected = currentScreen == Screen.DASHBOARD,
-            onClick = { onNavigate(Screen.DASHBOARD) },
-            icon = {
-                Icon(
-                    imageVector = if (currentScreen == Screen.DASHBOARD) Icons.Filled.Dashboard else Icons.Outlined.Dashboard,
-                    contentDescription = "Home"
-                )
-            },
-            label = { Text("Home") },
-            modifier = Modifier.testTag("nav_home_tab")
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+        ) {
+            // Subtle top hairline separator
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.8.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+            )
 
-        NavigationBarItem(
-            selected = currentScreen == Screen.CUSTOMERS,
-            onClick = { onNavigate(Screen.CUSTOMERS) },
-            icon = {
-                Icon(
-                    imageVector = if (currentScreen == Screen.CUSTOMERS) Icons.Filled.People else Icons.Outlined.People,
-                    contentDescription = "Customers"
+            // Sleek, compact Row for footer buttons (height: 54dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Tab 1: Home
+                BottomNavItem(
+                    selected = currentScreen == Screen.DASHBOARD,
+                    onClick = { onNavigate(Screen.DASHBOARD) },
+                    icon = if (currentScreen == Screen.DASHBOARD) Icons.Filled.Dashboard else Icons.Outlined.Dashboard,
+                    label = "Home",
+                    testTag = "nav_home_tab",
+                    modifier = Modifier.weight(1f)
                 )
-            },
-            label = { Text("Customers") },
-            modifier = Modifier.testTag("nav_customers_tab")
-        )
 
-        // Center prominent Add Entry button
-        NavigationBarItem(
-            selected = currentScreen == Screen.ADD_TRANSACTION,
-            onClick = { onNavigate(Screen.ADD_TRANSACTION) },
-            icon = {
+                // Tab 2: Khata (Parties) - Short 5-letter label so it's never cut off
+                BottomNavItem(
+                    selected = currentScreen == Screen.CUSTOMERS,
+                    onClick = { onNavigate(Screen.CUSTOMERS) },
+                    icon = if (currentScreen == Screen.CUSTOMERS) Icons.Filled.People else Icons.Outlined.People,
+                    label = "Khata",
+                    testTag = "nav_customers_tab",
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Tab 3: Sleek Center Add Entry Button
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                        .weight(1.1f)
+                        .fillMaxHeight()
+                        .clickable { onNavigate(Screen.ADD_TRANSACTION) }
+                        .testTag("nav_add_entry_tab"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Entry",
-                        tint = Color.White,
-                        modifier = Modifier.size(26.dp)
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            shadowElevation = 3.dp,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add Entry",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Add Entry",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            ),
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Clip
+                        )
+                    }
                 }
-            },
-            label = { Text("Add Entry", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
-            modifier = Modifier.testTag("nav_add_entry_tab")
-        )
 
-        NavigationBarItem(
-            selected = currentScreen == Screen.REPORTS,
-            onClick = { onNavigate(Screen.REPORTS) },
-            icon = {
-                Icon(
-                    imageVector = if (currentScreen == Screen.REPORTS) Icons.Filled.Assessment else Icons.Outlined.Assessment,
-                    contentDescription = "Reports"
+                // Tab 4: Reports
+                BottomNavItem(
+                    selected = currentScreen == Screen.REPORTS,
+                    onClick = { onNavigate(Screen.REPORTS) },
+                    icon = if (currentScreen == Screen.REPORTS) Icons.Filled.Assessment else Icons.Outlined.Assessment,
+                    label = "Reports",
+                    testTag = "nav_reports_tab",
+                    modifier = Modifier.weight(1f)
                 )
-            },
-            label = { Text("Reports") },
-            modifier = Modifier.testTag("nav_reports_tab")
-        )
 
-        NavigationBarItem(
-            selected = currentScreen == Screen.SETTINGS,
-            onClick = { onNavigate(Screen.SETTINGS) },
-            icon = {
-                Icon(
-                    imageVector = if (currentScreen == Screen.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
-                    contentDescription = "Settings"
+                // Tab 5: Settings
+                BottomNavItem(
+                    selected = currentScreen == Screen.SETTINGS,
+                    onClick = { onNavigate(Screen.SETTINGS) },
+                    icon = if (currentScreen == Screen.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
+                    label = "Settings",
+                    testTag = "nav_settings_tab",
+                    modifier = Modifier.weight(1f)
                 )
-            },
-            label = { Text("Settings") },
-            modifier = Modifier.testTag("nav_settings_tab")
-        )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomNavItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    label: String,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable(onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (selected) activeColor else inactiveColor,
+                modifier = Modifier.size(21.dp)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 10.5.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) activeColor else inactiveColor
+                ),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
+            )
+        }
     }
 }

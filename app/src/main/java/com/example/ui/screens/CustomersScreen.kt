@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -32,6 +37,8 @@ import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.HisabViewModel
 import com.example.ui.viewmodel.Screen
+import com.example.util.rememberSingleKeyFilter
+import java.io.File
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,6 +51,14 @@ fun CustomersScreen(viewModel: HisabViewModel) {
     var selectedFilter by remember { mutableStateOf("ALL") } // ALL, GET, GIVE, SETTLED
     var selectedSort by remember { mutableStateOf("RECENT") } // RECENT, AMOUNT, NAME
     var showAddCustomerDialog by remember { mutableStateOf(false) }
+
+    // Auto-open Add Customer dialog if requested from Dashboard or elsewhere
+    LaunchedEffect(viewModel.autoOpenAddCustomer.value) {
+        if (viewModel.autoOpenAddCustomer.value) {
+            showAddCustomerDialog = true
+            viewModel.autoOpenAddCustomer.value = false
+        }
+    }
 
     // Filter and Sort Customers
     val filteredCustomers = remember(customersWithBalances, searchQuery, selectedFilter, selectedSort) {
@@ -86,14 +101,16 @@ fun CustomersScreen(viewModel: HisabViewModel) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { showAddCustomerDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
-                modifier = Modifier.testTag("fab_add_customer")
-            ) {
-                Icon(Icons.Default.PersonAdd, contentDescription = "Add Customer")
-            }
+                icon = { Icon(Icons.Default.PersonAdd, contentDescription = null) },
+                text = { Text(AppStrings.get("add_customer", language), fontWeight = FontWeight.Bold) },
+                modifier = Modifier
+                    .padding(bottom = 12.dp)
+                    .testTag("fab_add_customer")
+            )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
@@ -211,6 +228,61 @@ fun CustomersScreen(viewModel: HisabViewModel) {
 
             Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
+            // Prominent, unmissable Add New Customer Button Card
+            Surface(
+                onClick = { showAddCustomerDialog = true },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .testTag("btn_top_add_customer")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.PersonAdd,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "+ " + AppStrings.get("add_customer", language),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                            Text(
+                                text = "Create new customer or supplier account",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
             // Customer List
             if (filteredCustomers.isEmpty()) {
                 Box(
@@ -232,12 +304,23 @@ fun CustomersScreen(viewModel: HisabViewModel) {
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = { showAddCustomerDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.testTag("empty_add_customer_btn")
+                        ) {
+                            Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(AppStrings.get("add_customer", language), fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredCustomers) { cwb ->
@@ -297,32 +380,27 @@ fun CustomerListItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Avatar circle with first letter
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = cust.name.firstOrNull()?.uppercase() ?: "C",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                }
+                // Customer avatar with image/upload indicator
+                CustomerAvatarBadge(
+                    photoUri = cust.photoUri,
+                    customerName = cust.name,
+                    size = 46.dp,
+                    showUploadIndicator = cust.photoUri.isBlank()
+                )
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text(
                             text = cust.name,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (cust.customerType == "SUPPLIER") {
                             Spacer(modifier = Modifier.width(6.dp))
@@ -342,7 +420,9 @@ fun CustomerListItem(
                     Text(
                         text = cust.phone,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
                     if (cwb.lastTransactionMillis != null) {
@@ -387,14 +467,40 @@ fun AddOrEditCustomerDialog(
     onDismiss: () -> Unit,
     onSave: (CustomerEntity) -> Unit
 ) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf(customer?.name ?: "") }
     var phone by remember { mutableStateOf(customer?.phone ?: "") }
     var whatsapp by remember { mutableStateOf(customer?.whatsapp ?: "") }
     var address by remember { mutableStateOf(customer?.address ?: "") }
+    var photoUri by remember { mutableStateOf(customer?.photoUri ?: "") }
     var customerType by remember { mutableStateOf(customer?.customerType ?: "CUSTOMER") }
     var openingBalStr by remember { mutableStateOf(if (customer != null && customer.openingBalance > 0) customer.openingBalance.toString() else "") }
     var openingType by remember { mutableStateOf(customer?.openingBalanceType ?: "GET") } // GET, GIVE, ZERO
     var notes by remember { mutableStateOf(customer?.notes ?: "") }
+
+    val phoneFilter = rememberSingleKeyFilter()
+    val whatsappFilter = rememberSingleKeyFilter()
+    val balFilter = rememberSingleKeyFilter()
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val photosDir = File(context.filesDir, "customer_photos")
+                photosDir.mkdirs()
+                val targetFile = File(photosDir, "cust_${System.currentTimeMillis()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    targetFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                photoUri = targetFile.toURI().toString()
+            } catch (e: Exception) {
+                photoUri = uri.toString()
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -410,6 +516,43 @@ fun AddOrEditCustomerDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
+                // Customer Photo Upload Circle
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CustomerAvatarBadge(
+                            photoUri = photoUri,
+                            customerName = name.ifBlank { "C" },
+                            size = 70.dp,
+                            showUploadIndicator = true,
+                            onAvatarClick = {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        TextButton(
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        ) {
+                            Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (photoUri.isBlank()) "Upload Photo" else "Change Photo",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -420,9 +563,10 @@ fun AddOrEditCustomerDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = {
-                        phone = it
-                        if (whatsapp.isEmpty()) whatsapp = it
+                    onValueChange = { raw ->
+                        val filtered = phoneFilter.filter(phone, raw)
+                        phone = filtered
+                        if (whatsapp.isEmpty()) whatsapp = filtered
                     },
                     label = { Text(AppStrings.get("phone_number", language)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -432,7 +576,7 @@ fun AddOrEditCustomerDialog(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = whatsapp,
-                    onValueChange = { whatsapp = it },
+                    onValueChange = { whatsapp = whatsappFilter.filter(whatsapp, it) },
                     label = { Text(AppStrings.get("whatsapp_number", language)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     singleLine = true,
@@ -466,7 +610,7 @@ fun AddOrEditCustomerDialog(
                 // Opening balance
                 OutlinedTextField(
                     value = openingBalStr,
-                    onValueChange = { openingBalStr = it },
+                    onValueChange = { openingBalStr = balFilter.filter(openingBalStr, it) },
                     label = { Text(AppStrings.get("opening_balance", language) + " (₹)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
@@ -529,6 +673,7 @@ fun AddOrEditCustomerDialog(
                             phone = phone.trim(),
                             whatsapp = whatsapp.trim().ifBlank { phone.trim() },
                             address = address.trim(),
+                            photoUri = photoUri,
                             customerType = customerType,
                             openingBalance = obAmount,
                             openingBalanceType = if (obAmount > 0) openingType else "ZERO",

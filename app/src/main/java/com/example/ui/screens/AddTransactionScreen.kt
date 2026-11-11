@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +29,7 @@ import com.example.localization.AppStrings
 import com.example.ui.components.HisabTopAppBar
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.HisabViewModel
+import com.example.util.rememberSingleKeyFilter
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,12 +41,27 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
     var selectedCustomerId by remember { mutableStateOf(customersWithBalances.firstOrNull()?.customer?.id ?: "") }
     var txnType by remember { mutableStateOf("GAVE") } // GAVE or GOT
     var amountStr by remember { mutableStateOf("") }
+    val amountFilter = rememberSingleKeyFilter()
     var remarks by remember { mutableStateOf("") }
     var paymentMethod by remember { mutableStateOf("CASH") }
     var billNo by remember { mutableStateOf("") }
 
     var showNewCustomerDialog by remember { mutableStateOf(false) }
+    var showQuickAmountDialog by remember { mutableStateOf(false) }
+    var showKeypad by remember { mutableStateOf(false) }
     var customerDropdownExpanded by remember { mutableStateOf(false) }
+
+    var lastPresetClickMillis by remember { mutableLongStateOf(0L) }
+
+    val onAddPreset: (Int) -> Unit = { preset ->
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastPresetClickMillis >= 400L) {
+            lastPresetClickMillis = now
+            val current = amountStr.toDoubleOrNull() ?: 0.0
+            val newAmount = (current + preset).toLong()
+            amountStr = newAmount.toString()
+        }
+    }
 
     val isGot = txnType == "GOT"
     val accentColor = if (isGot) CreditGreen else DebitRed
@@ -138,7 +156,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Customer Selector Card
+            // Customer Selector Card with Prominent Add Customer Button
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -155,14 +173,33 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                             text = AppStrings.get("customer_name", language),
                             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                         )
-                        TextButton(onClick = { showNewCustomerDialog = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(AppStrings.get("add_customer", language))
+
+                        // Prominent "+ Add Customer" button
+                        Button(
+                            onClick = { showNewCustomerDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("btn_add_customer_in_txn")
+                        ) {
+                            Icon(
+                                Icons.Default.PersonAdd,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "+ " + AppStrings.get("add_customer", language),
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     val selectedCust = customersWithBalances.find { it.customer.id == selectedCustomerId }?.customer
                     ExposedDropdownMenuBox(
@@ -171,9 +208,16 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         OutlinedTextField(
-                            value = selectedCust?.name ?: "Select Customer",
+                            value = selectedCust?.name ?: if (customersWithBalances.isEmpty()) "No Customers (+ Add New Customer)" else "Select Customer",
                             onValueChange = {},
                             readOnly = true,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = customerDropdownExpanded) },
                             modifier = Modifier
                                 .menuAnchor()
@@ -185,6 +229,29 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                             expanded = customerDropdownExpanded,
                             onDismissRequest = { customerDropdownExpanded = false }
                         ) {
+                            // Top explicit option in dropdown: Add New Customer!
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.PersonAdd,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        text = "+ " + AppStrings.get("add_customer", language),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                onClick = {
+                                    customerDropdownExpanded = false
+                                    showNewCustomerDialog = true
+                                }
+                            )
+                            HorizontalDivider()
+
                             customersWithBalances.forEach { cwb ->
                                 DropdownMenuItem(
                                     text = {
@@ -206,7 +273,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Amount Input Card
+            // Amount Input Card with Revived Pop-up up to ₹2000
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -214,16 +281,51 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = AppStrings.get("amount", language) + " (₹)",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = AppStrings.get("amount", language) + " (₹)",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+
+                        // Revived Quick Amount Pop-up trigger button (up to 2000)
+                        Surface(
+                            onClick = { showQuickAmountDialog = true },
+                            shape = RoundedCornerShape(20.dp),
+                            color = accentColor.copy(alpha = 0.12f),
+                            modifier = Modifier.testTag("btn_trigger_amount_popup")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Payments,
+                                    contentDescription = null,
+                                    tint = accentColor,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "⚡ Pop-up (up to ₹2000)",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = accentColor,
+                                        fontSize = 11.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     OutlinedTextField(
                         value = amountStr,
-                        onValueChange = { amountStr = it },
+                        onValueChange = { amountStr = amountFilter.filter(amountStr, it) },
                         placeholder = { Text("0.00") },
                         textStyle = MaterialTheme.typography.headlineMedium.copy(
                             fontWeight = FontWeight.ExtraBold,
@@ -239,7 +341,17 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                                 modifier = Modifier.padding(start = 12.dp)
                             )
                         },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        trailingIcon = {
+                            if (amountStr.isNotBlank()) {
+                                IconButton(onClick = { amountStr = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear Amount")
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            autoCorrectEnabled = false
+                        ),
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -248,19 +360,171 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Preset Chips
-                    Row(
+                    // Quick Preset Chips (up to 2000 only) - debounced so 1 click = 1 add
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf(100, 500, 1000, 2000, 5000).forEach { preset ->
-                            SuggestionChip(
+                        items(listOf(100, 200, 500, 1000, 2000)) { preset ->
+                            Surface(
+                                onClick = { onAddPreset(preset) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = accentColor.copy(alpha = 0.09f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.3f)),
+                                modifier = Modifier.testTag("preset_btn_$preset")
+                            ) {
+                                Text(
+                                    text = "+₹$preset",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = accentColor
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                        item {
+                            Surface(
                                 onClick = {
-                                    val current = amountStr.toDoubleOrNull() ?: 0.0
-                                    amountStr = (current + preset).toInt().toString()
+                                    val now = android.os.SystemClock.uptimeMillis()
+                                    if (now - lastPresetClickMillis >= 400L) {
+                                        lastPresetClickMillis = now
+                                        showQuickAmountDialog = true
+                                    }
                                 },
-                                label = { Text("+$preset") }
-                            )
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                modifier = Modifier.testTag("preset_btn_popup")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Payments,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Pop-up",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        item {
+                            Surface(
+                                onClick = { showKeypad = !showKeypad },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (showKeypad) accentColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (showKeypad) androidx.compose.foundation.BorderStroke(1.dp, accentColor) else null,
+                                modifier = Modifier.testTag("preset_btn_keypad")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (showKeypad) Icons.Default.KeyboardHide else Icons.Default.Dialpad,
+                                        contentDescription = null,
+                                        tint = if (showKeypad) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (showKeypad) "Keypad ✓" else "Keypad",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (showKeypad) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        if (amountStr.isNotBlank()) {
+                            item {
+                                Surface(
+                                    onClick = { amountStr = "" },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.testTag("preset_btn_clear")
+                                ) {
+                                    Text(
+                                        text = "Clear",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Interactive On-Screen Number Pad
+                    if (showKeypad) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val keypadRows = listOf(
+                            listOf("1", "2", "3"),
+                            listOf("4", "5", "6"),
+                            listOf("7", "8", "9"),
+                            listOf(".", "0", "⌫")
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for (row in keypadRows) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    for (key in row) {
+                                        Surface(
+                                            onClick = {
+                                                val now = System.currentTimeMillis()
+                                                if (now - lastPresetClickMillis >= 250L) {
+                                                    lastPresetClickMillis = now
+                                                    when (key) {
+                                                        "⌫" -> if (amountStr.isNotEmpty()) amountStr = amountStr.dropLast(1)
+                                                        "." -> if (!amountStr.contains(".")) amountStr += "."
+                                                        else -> {
+                                                            if (amountStr == "0") amountStr = key else amountStr += key
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (key == "⌫") MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(44.dp)
+                                                .testTag("keypad_btn_$key")
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                if (key == "⌫") {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Backspace,
+                                                        contentDescription = "Backspace",
+                                                        tint = DebitRed,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = key,
+                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -370,6 +634,73 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                 viewModel.addCustomer(newCust)
                 selectedCustomerId = newCust.id
                 showNewCustomerDialog = false
+            }
+        )
+    }
+
+    if (showQuickAmountDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuickAmountDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Payments,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Quick Amount Pop-up",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Select note amount (Up to ₹2000)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    val presets = listOf(50, 100, 200, 500, 1000, 2000)
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        for (rowItems in presets.chunked(3)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                for (p in rowItems) {
+                                    Button(
+                                        onClick = {
+                                            onAddPreset(p)
+                                            showQuickAmountDialog = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = accentColor.copy(alpha = 0.15f),
+                                            contentColor = accentColor
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                    ) {
+                                        Text("₹$p", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQuickAmountDialog = false }) {
+                    Text("Close")
+                }
             }
         )
     }

@@ -1,8 +1,14 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +30,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import com.example.data.model.BackupMetadata
 import com.example.localization.AppLanguage
 import com.example.localization.AppStrings
 import com.example.ui.components.HisabBottomNav
@@ -32,6 +40,8 @@ import com.example.ui.components.formatDate
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.HisabViewModel
 import com.example.ui.viewmodel.Screen
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
 fun SettingsScreen(viewModel: HisabViewModel) {
@@ -39,13 +49,53 @@ fun SettingsScreen(viewModel: HisabViewModel) {
     val language by viewModel.appLanguage.collectAsState()
     val user by viewModel.currentUser.collectAsState()
     val isPinEnabled by viewModel.isPinLockEnabled.collectAsState()
+    val lastBackupTime by viewModel.lastBackupTime.collectAsState()
+    val customersWithBalances by viewModel.customersWithBalances.collectAsState()
+    val allTransactions by viewModel.allTransactions.collectAsState()
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showPinDialog by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var showTermsDialog by remember { mutableStateOf(false) }
+
+    // Launcher for saving backup file directly to device storage
+    val saveBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.saveBackupToUri(uri) { success ->
+                if (success) {
+                    showExportDialog = false
+                }
+            }
+        }
+    }
+
+    // Launcher for opening backup file from device storage
+    var parsedBackupMetadata by remember { mutableStateOf<BackupMetadata?>(null) }
+    var pendingRestoreJson by remember { mutableStateOf<String?>(null) }
+
+    val openBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.readBackupFromUri(uri) { content ->
+                if (!content.isNullOrBlank()) {
+                    val parseResult = viewModel.parseBackupInfo(content)
+                    if (parseResult.isSuccess) {
+                        parsedBackupMetadata = parseResult.getOrNull()
+                        pendingRestoreJson = content
+                        showRestoreDialog = true
+                    } else {
+                        viewModel.showMessage(parseResult.exceptionOrNull()?.message ?: "Invalid backup file")
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -202,62 +252,90 @@ fun SettingsScreen(viewModel: HisabViewModel) {
                 }
             }
 
-            // Backup & Restore Section
+            // Backup & Restore Section (Matching Screenshot)
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("backup_restore_card")
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         text = AppStrings.get("backup_restore", language),
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
-                    val lastBackup = viewModel.repository.getLastBackupTime()
-                    if (lastBackup > 0) {
-                        Text(
-                            text = "Last Backup: ${formatDate(lastBackup)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = if (lastBackupTime > 0) {
+                            "Last Backup: ${formatDate(lastBackupTime)}"
+                        } else {
+                            "Last Backup: Not backed up yet"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${customersWithBalances.size} customers • ${allTransactions.size} transactions recorded",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // Export Backup Button
                         OutlinedButton(
-                            onClick = {
-                                viewModel.exportBackup { json ->
-                                    if (json != null) {
-                                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "application/json"
-                                            putExtra(Intent.EXTRA_SUBJECT, "Hisab_Pro_Backup_${System.currentTimeMillis()}.json")
-                                            putExtra(Intent.EXTRA_TEXT, json)
-                                        }
-                                        context.startActivity(Intent.createChooser(sendIntent, "Export Hisab Pro Backup"))
-                                    }
-                                }
-                            },
+                            onClick = { showExportDialog = true },
                             shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier.weight(1f).testTag("btn_export_backup")
                         ) {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export Backup")
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Export Backup",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
+                        // Restore Button
                         OutlinedButton(
                             onClick = { showRestoreDialog = true },
                             shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                             modifier = Modifier.weight(1f).testTag("btn_restore_backup")
                         ) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Restore")
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Restore",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -317,6 +395,364 @@ fun SettingsScreen(viewModel: HisabViewModel) {
                 }
             }
         }
+    }
+
+    // Export Backup Dialog / Bottom Action
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (language == AppLanguage.HINDI) "डेटा बैकअप लें" else "Export Data Backup",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Save your store records safely to device storage or share via WhatsApp/Google Drive.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Store: ${user?.businessName ?: "My Business"}",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "• Total Customers: ${customersWithBalances.size}\n• Total Transactions: ${allTransactions.size}\n• Format: JSON (Encrypted/Compatible)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Option 1: Save directly to phone storage
+                    Button(
+                        onClick = {
+                            val sdf = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault())
+                            val filename = "Hisab_Pro_Backup_${sdf.format(Date())}.json"
+                            saveBackupLauncher.launch(filename)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Save to Device Storage (.json)")
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Option 2: Share file via WhatsApp / Google Drive / Email
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.createBackupFileForShare { file ->
+                                if (file != null) {
+                                    val contentUri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_STREAM, contentUri)
+                                        putExtra(Intent.EXTRA_SUBJECT, file.name)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Backup File"))
+                                    showExportDialog = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Share File (WhatsApp / Drive)")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Option 3: Copy JSON Text
+                    TextButton(
+                        onClick = {
+                            viewModel.exportBackup { json ->
+                                if (json != null) {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Hisab Pro Backup", json)
+                                    clipboard.setPrimaryClip(clip)
+                                    viewModel.showMessage("Backup JSON copied to clipboard!")
+                                    showExportDialog = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Copy JSON Text to Clipboard", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showExportDialog = false }) {
+                    Text(AppStrings.get("cancel", language))
+                }
+            }
+        )
+    }
+
+    // Restore Backup Dialog
+    if (showRestoreDialog) {
+        var replaceExisting by remember { mutableStateOf(false) }
+        var manualJsonText by remember { mutableStateOf("") }
+        var showManualInput by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = {
+                showRestoreDialog = false
+                parsedBackupMetadata = null
+                pendingRestoreJson = null
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (language == AppLanguage.HINDI) "डेटा रीस्टोर करें" else "Restore Data Backup",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (parsedBackupMetadata != null && pendingRestoreJson != null) {
+                        // File loaded and parsed! Show confirmation card
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = CreditGreenContainer.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, CreditGreen, RoundedCornerShape(12.dp))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = CreditGreen, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Backup File Validated",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = CreditGreen)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "• Store: ${parsedBackupMetadata!!.businessName}\n" +
+                                            "• Backup Date: ${formatDate(parsedBackupMetadata!!.exportedAt)}\n" +
+                                            "• Customers to restore: ${parsedBackupMetadata!!.customerCount}\n" +
+                                            "• Transactions to restore: ${parsedBackupMetadata!!.transactionCount}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = "Restore Mode:",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Radio: Merge
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { replaceExisting = false }
+                        ) {
+                            RadioButton(
+                                selected = !replaceExisting,
+                                onClick = { replaceExisting = false }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("Merge with existing records", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                Text("Keeps existing customers, updates/adds records", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Radio: Replace
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { replaceExisting = true }
+                        ) {
+                            RadioButton(
+                                selected = replaceExisting,
+                                onClick = { replaceExisting = true }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text("Replace all current records", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                                Text("Erases current store data and restores exact backup", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Button(
+                            onClick = {
+                                viewModel.restoreBackupWithOption(pendingRestoreJson!!, replaceExisting) {
+                                    showRestoreDialog = false
+                                    parsedBackupMetadata = null
+                                    pendingRestoreJson = null
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Confirm & Restore Data", fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                parsedBackupMetadata = null
+                                pendingRestoreJson = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Choose Different File")
+                        }
+                    } else {
+                        // File not yet chosen
+                        Text(
+                            text = "Select a Hisab Pro backup file (.json) from your device downloads, Google Drive, or local storage.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Big Browse / Select File button
+                        Button(
+                            onClick = {
+                                openBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Select Backup File (.json)",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Or Paste JSON
+                        TextButton(
+                            onClick = { showManualInput = !showManualInput },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = if (showManualInput) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Or Paste JSON Code Manually", style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        if (showManualInput) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = manualJsonText,
+                                onValueChange = { manualJsonText = it },
+                                placeholder = { Text("Paste JSON backup string here...") },
+                                modifier = Modifier.fillMaxWidth().height(120.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    if (manualJsonText.isNotBlank()) {
+                                        val parseResult = viewModel.parseBackupInfo(manualJsonText)
+                                        if (parseResult.isSuccess) {
+                                            parsedBackupMetadata = parseResult.getOrNull()
+                                            pendingRestoreJson = manualJsonText
+                                        } else {
+                                            viewModel.showMessage("Invalid JSON format")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Validate & Preview JSON")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    showRestoreDialog = false
+                    parsedBackupMetadata = null
+                    pendingRestoreJson = null
+                }) {
+                    Text(AppStrings.get("cancel", language))
+                }
+            }
+        )
     }
 
     // Edit Profile Dialog
@@ -425,43 +861,6 @@ fun SettingsScreen(viewModel: HisabViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { showPinDialog = false }) {
-                    Text(AppStrings.get("cancel", language))
-                }
-            }
-        )
-    }
-
-    // Restore Backup Dialog
-    if (showRestoreDialog) {
-        var jsonText by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showRestoreDialog = false },
-            title = { Text(AppStrings.get("import_backup", language)) },
-            text = {
-                Column {
-                    Text("Paste your exported Hisab Pro backup JSON text below:")
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = jsonText,
-                        onValueChange = { jsonText = it },
-                        modifier = Modifier.fillMaxWidth().height(140.dp)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (jsonText.isNotBlank()) {
-                            viewModel.restoreBackup(jsonText)
-                            showRestoreDialog = false
-                        }
-                    }
-                ) {
-                    Text("Restore Now")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRestoreDialog = false }) {
                     Text(AppStrings.get("cancel", language))
                 }
             }

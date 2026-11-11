@@ -35,6 +35,7 @@ import com.example.data.model.UserEntity
 import com.example.localization.AppLanguage
 import com.example.localization.AppStrings
 import com.example.ui.theme.*
+import com.example.util.rememberSingleKeyFilter
 
 @Composable
 fun WhatsAppReminderDialog(
@@ -399,6 +400,7 @@ fun PinUnlockOverlay(
     currentLanguage: AppLanguage
 ) {
     var pinText by remember { mutableStateOf("") }
+    val pinFilter = rememberSingleKeyFilter()
     var isError by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = { /* Cannot dismiss without pin */ }) {
@@ -444,12 +446,13 @@ fun PinUnlockOverlay(
 
                 OutlinedTextField(
                     value = pinText,
-                    onValueChange = {
-                        if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
-                            pinText = it
+                    onValueChange = { raw ->
+                        val filtered = pinFilter.filter(pinText, raw)
+                        if (filtered.length <= 4 && filtered.all { ch -> ch.isDigit() }) {
+                            pinText = filtered
                             isError = false
-                            if (it.length == 4) {
-                                if (onVerifyPin(it)) {
+                            if (filtered.length == 4) {
+                                if (onVerifyPin(filtered)) {
                                     onUnlockSuccess()
                                 } else {
                                     isError = true

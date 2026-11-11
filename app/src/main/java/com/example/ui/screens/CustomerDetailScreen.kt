@@ -3,6 +3,9 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,13 +26,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.TransactionEntity
 import com.example.localization.AppStrings
 import com.example.ui.components.*
+import androidx.core.content.FileProvider
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.HisabViewModel
+import com.example.util.rememberSingleKeyFilter
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -64,6 +71,26 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
     val isGet = netBalance > 0.01
     val isSettled = kotlin.math.abs(netBalance) <= 0.01
     val netColor = if (isSettled) MaterialTheme.colorScheme.onSurfaceVariant else if (isGet) CreditGreen else DebitRed
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val photosDir = File(context.filesDir, "customer_photos")
+                photosDir.mkdirs()
+                val targetFile = File(photosDir, "cust_${customer.id}_${System.currentTimeMillis()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    targetFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                viewModel.updateCustomerPhoto(customer.id, targetFile.toURI().toString())
+            } catch (e: Exception) {
+                viewModel.updateCustomerPhoto(customer.id, uri.toString())
+            }
+        }
+    }
 
     // Filter transactions by date range
     val filteredTxns = remember(transactionsWithRunning, selectedDateFilter) {
@@ -175,7 +202,7 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .testTag("ledger_list"),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Customer Header Info Card
@@ -187,6 +214,50 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        // Customer Profile & Photo Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CustomerAvatarBadge(
+                                photoUri = customer.photoUri,
+                                customerName = customer.name,
+                                size = 52.dp,
+                                showUploadIndicator = true,
+                                onAvatarClick = {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = customer.name,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${customer.phone}${if (customer.address.isNotBlank()) " • ${customer.address}" else ""}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (customer.photoUri.isBlank()) "Tap avatar to add photo" else "Tap avatar to change photo",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        Spacer(modifier = Modifier.height(12.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -274,6 +345,58 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
                                 )
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Quick Statement & Export Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            AssistChip(
+                                onClick = {
+                                    shareCustomerStatement(context, customer, transactionsWithRunning, netBalance, currentUser?.businessName)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.PictureAsPdf,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = if (language == com.example.localization.AppLanguage.HINDI) "स्टेटमेंट PDF" else "PDF Statement",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            AssistChip(
+                                onClick = {
+                                    exportCustomerCsv(context, customer, transactionsWithRunning, currentUser?.businessName)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.TableChart,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = if (language == com.example.localization.AppLanguage.HINDI) "खाता CSV" else "Export CSV",
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                 }
@@ -380,45 +503,68 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                             .fillMaxWidth()
                             .clickable { viewModel.openReceiptDialog(txn) }
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = formatShortDate(txn.dateMillis),
-                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CustomerAvatarBadge(
+                                photoUri = customer.photoUri,
+                                customerName = customer.name,
+                                isGot = isGot,
+                                size = 38.dp,
+                                badgeSize = 14.dp,
+                                showUploadIndicator = false,
+                                onAvatarClick = {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
-                                    Text(
-                                        text = "${txn.paymentMethod}${if (txn.billNumber.isNotBlank()) " • Bill #${txn.billNumber}" else ""}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (txn.remarks.isNotBlank()) {
-                                        Text(
-                                            text = txn.remarks,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
                                 }
+                            )
 
-                                Column(horizontalAlignment = Alignment.End) {
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = formatShortDate(txn.dateMillis),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${txn.paymentMethod}${if (txn.billNumber.isNotBlank()) " • Bill #${txn.billNumber}" else ""}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (txn.remarks.isNotBlank()) {
                                     Text(
-                                        text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = if (isGot) CreditGreen else DebitRed
-                                        )
-                                    )
-                                    Text(
-                                        text = "Bal: ${formatCurrency(item.runningBalance)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        text = txn.remarks,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isGot) CreditGreen else DebitRed
+                                    ),
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "Bal: ${formatCurrency(item.runningBalance)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
                             }
                         }
                     }
@@ -498,6 +644,8 @@ fun QuickAddTransactionDialog(
 ) {
     val isGot = transactionType == "GOT"
     var amountStr by remember { mutableStateOf("") }
+    val amountFilter = rememberSingleKeyFilter()
+    var lastPresetClickMillis by remember { mutableLongStateOf(0L) }
     var remarks by remember { mutableStateOf("") }
     var method by remember { mutableStateOf("CASH") }
 
@@ -537,28 +685,33 @@ fun QuickAddTransactionDialog(
             Column(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = amountStr,
-                    onValueChange = { amountStr = it },
+                    onValueChange = { amountStr = amountFilter.filter(amountStr, it) },
                     label = { Text(AppStrings.get("amount", language) + " (₹)") },
                     placeholder = { Text("0.00") },
-                    textStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                        autoCorrectEnabled = false
+                    ),
                     modifier = Modifier.fillMaxWidth().testTag("quick_txn_amount_input")
                 )
 
-                // Quick Amount Presets (+100, +500, +1000, +2000)
+                // Quick Amount Presets (+100, +200, +500, +1000, +2000) - debounced so 1 tap = 1 add
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(
+                LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(100, 500, 1000, 2000).forEach { preset ->
+                    items(listOf(100, 200, 500, 1000, 2000)) { preset ->
                         AssistChip(
                             onClick = {
-                                val current = amountStr.toDoubleOrNull() ?: 0.0
-                                amountStr = (current + preset).toInt().toString()
+                                val now = android.os.SystemClock.uptimeMillis()
+                                if (now - lastPresetClickMillis >= 400L) {
+                                    lastPresetClickMillis = now
+                                    val current = amountStr.toDoubleOrNull() ?: 0.0
+                                    amountStr = (current + preset).toLong().toString()
+                                }
                             },
-                            label = { Text("+$preset") }
+                            label = { Text("+$preset", fontWeight = FontWeight.SemiBold) }
                         )
                     }
                 }
@@ -651,10 +804,64 @@ fun shareCustomerStatement(
         appendLine("Generated by Hisab Pro Digital Ledger")
     }
 
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "${customer.name} - Statement from $store")
-        putExtra(Intent.EXTRA_TEXT, report)
+    try {
+        val sanitizedName = customer.name.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val file = File(context.cacheDir, "statement_${sanitizedName}.txt")
+        file.writeText(report)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "${customer.name} - Statement from $store")
+            putExtra(Intent.EXTRA_TEXT, report)
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Customer Statement"))
+    } catch (e: Exception) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "${customer.name} - Statement from $store")
+            putExtra(Intent.EXTRA_TEXT, report)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Statement"))
     }
-    context.startActivity(Intent.createChooser(intent, "Share Statement"))
+}
+
+fun exportCustomerCsv(
+    context: android.content.Context,
+    customer: com.example.data.model.CustomerEntity,
+    txns: List<com.example.data.model.TransactionWithBalance>,
+    bizName: String?
+) {
+    val store = bizName ?: "Hisab Pro"
+    val csv = buildString {
+        appendLine("TxnID,CustomerName,Date,Type,Amount,RunningBalance,PaymentMethod,BillNo,Remarks")
+        for (item in txns) {
+            val t = item.transaction
+            val dStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(t.dateMillis))
+            appendLine("${t.id},\"${customer.name}\",$dStr,${t.type},${t.amount},${item.runningBalance},${t.paymentMethod},\"${t.billNumber}\",\"${t.remarks}\"")
+        }
+    }
+
+    try {
+        val sanitizedName = customer.name.replace(Regex("[^a-zA-Z0-9]"), "_")
+        val file = File(context.cacheDir, "ledger_${sanitizedName}.csv")
+        file.writeText(csv)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_SUBJECT, "${customer.name} - Ledger CSV ($store)")
+            putExtra(Intent.EXTRA_TEXT, "Account ledger CSV for ${customer.name} from $store (${txns.size} entries)")
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Export Customer CSV"))
+    } catch (e: Exception) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_SUBJECT, "${customer.name} - Ledger CSV ($store)")
+            putExtra(Intent.EXTRA_TEXT, csv)
+        }
+        context.startActivity(Intent.createChooser(intent, "Export Customer CSV"))
+    }
 }

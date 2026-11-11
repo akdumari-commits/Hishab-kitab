@@ -305,11 +305,16 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(AppStrings.get("nav_add", language), fontWeight = FontWeight.Bold)
+                        Text(
+                            text = AppStrings.get("nav_add", language),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     OutlinedButton(
-                        onClick = { viewModel.navigateTo(Screen.CUSTOMERS) },
+                        onClick = { viewModel.openAddCustomer() },
                         modifier = Modifier
                             .weight(1f)
                             .height(46.dp)
@@ -318,10 +323,17 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                     ) {
                         Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(AppStrings.get("add_customer", language), fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (language == AppLanguage.HINDI) "+ नया जोड़ें" else "+ Add New",
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
+
+
 
             // Overdue / Pending Reminders Section
             if (overdueCustomers.isNotEmpty()) {
@@ -358,20 +370,37 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                                         .width(220.dp)
                                         .clickable { viewModel.selectCustomer(cwb.customer.id) }
                                 ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Text(
-                                            text = cwb.customer.name,
-                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = cwb.customer.phone,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            CustomerAvatarBadge(
+                                                photoUri = cwb.customer.photoUri,
+                                                customerName = cwb.customer.name,
+                                                size = 36.dp,
+                                                badgeSize = 13.dp,
+                                                isGot = true
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = cwb.customer.name,
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = cwb.customer.phone,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
 
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(10.dp))
 
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -383,7 +412,10 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                                                 style = MaterialTheme.typography.titleMedium.copy(
                                                     fontWeight = FontWeight.Bold,
                                                     color = CreditGreen
-                                                )
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
                                             )
                                             IconButton(
                                                 onClick = { viewModel.openReminderDialog(cwb) },
@@ -454,66 +486,66 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isGot) CreditGreenContainer else DebitRedContainer),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (isGot) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                                        contentDescription = null,
-                                        tint = if (isGot) CreditGreen else DebitRed,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                            // Customer avatar with image/upload icon and near small directional arrow
+                            CustomerAvatarBadge(
+                                photoUri = customer?.photoUri,
+                                customerName = customer?.name ?: "Customer",
+                                isGot = isGot,
+                                size = 42.dp,
+                                badgeSize = 16.dp,
+                                showUploadIndicator = customer?.photoUri.isNullOrBlank(),
+                                onAvatarClick = {
+                                    customer?.let { viewModel.selectCustomer(it.id) }
                                 }
+                            )
 
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
+                            // Middle Info Column (weighted to never push amount off-screen)
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 10.dp)
+                            ) {
+                                Text(
+                                    text = customer?.name ?: "Customer",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${formatShortDate(txn.dateMillis)} • ${txn.paymentMethod}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (txn.remarks.isNotBlank()) {
                                     Text(
-                                        text = customer?.name ?: "Customer",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        text = txn.remarks,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(
-                                        text = "${formatShortDate(txn.dateMillis)} • ${txn.paymentMethod}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (txn.remarks.isNotBlank()) {
-                                        Text(
-                                            text = txn.remarks,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
                                 }
                             }
 
+                            // Right-aligned Amount & Status
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.Bold,
                                         color = if (isGot) CreditGreen else DebitRed
-                                    )
+                                    ),
+                                    maxLines = 1
                                 )
                                 Text(
                                     text = if (isGot) AppStrings.get("got_money", language) else AppStrings.get("gave_money", language),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (isGot) CreditGreen else DebitRed
+                                    color = if (isGot) CreditGreen else DebitRed,
+                                    maxLines = 1
                                 )
                             }
                         }

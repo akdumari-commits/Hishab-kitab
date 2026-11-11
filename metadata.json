@@ -1,0 +1,6 @@
+{
+  "name": "Hisab Pro",
+  "description": "Professional Digital Khata & Ledger Management for businesses, shopkeepers, and retailers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

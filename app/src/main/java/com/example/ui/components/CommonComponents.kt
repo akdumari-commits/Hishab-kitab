@@ -58,6 +58,7 @@ fun HisabTopAppBar(
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     TopAppBar(
+        windowInsets = TopAppBarDefaults.windowInsets,
         title = {
             Column {
                 Text(
@@ -174,8 +175,8 @@ fun HisabBottomNav(
     NavigationBar(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .testTag("bottom_nav_bar"),
+        windowInsets = NavigationBarDefaults.windowInsets,
         containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 6.dp
     ) {

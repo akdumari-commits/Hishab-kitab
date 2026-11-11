@@ -357,6 +357,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
             }
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 

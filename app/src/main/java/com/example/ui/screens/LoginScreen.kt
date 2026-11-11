@@ -49,7 +49,8 @@ fun LoginScreen(viewModel: HisabViewModel) {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets.safeDrawing
     ) { innerPadding ->
         Column(
             modifier = Modifier

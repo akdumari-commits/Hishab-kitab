@@ -115,14 +115,13 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
             Surface(
                 tonalElevation = 8.dp,
                 color = MaterialTheme.colorScheme.surface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .navigationBarsPadding()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // GAVE MONEY (Red button)

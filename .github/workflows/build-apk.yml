@@ -30,10 +30,13 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
 
+    - name: Make gradlew executable
+      run: chmod +x ./gradlew
+
     - name: Build Debug APK
       env:
         GRADLE_OPTS: "-Djava.awt.headless=true -Dorg.gradle.jvmargs=\"-Xmx4096m -Djava.awt.headless=true\""
-      run: gradle assembleDebug --no-daemon
+      run: ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Rename APK for release
       run: cp app/build/outputs/apk/debug/*.apk ./app-debug.apk

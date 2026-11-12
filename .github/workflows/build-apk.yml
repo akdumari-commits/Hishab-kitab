@@ -32,7 +32,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
-        run: xvfb-run -a gradle assembleDebug -Pksp.useKSP2=false --no-daemon
+        run: xvfb-run -a gradle assembleDebug -Dorg.gradle.jvmargs="-Xmx4g -Djava.awt.headless=false" --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

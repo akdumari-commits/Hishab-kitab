@@ -705,7 +705,7 @@ fun QuickAddTransactionDialog(
                         AssistChip(
                             onClick = {
                                 val now = android.os.SystemClock.uptimeMillis()
-                                if (now - lastPresetClickMillis >= 400L) {
+                                if (now - lastPresetClickMillis >= 160L) {
                                     lastPresetClickMillis = now
                                     val current = amountStr.toDoubleOrNull() ?: 0.0
                                     amountStr = (current + preset).toLong().toString()

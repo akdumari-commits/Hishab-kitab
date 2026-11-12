@@ -152,6 +152,22 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun resetPassword(identifier: String, newPass: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val res = repository.resetPassword(identifier, newPass)
+            if (res.isSuccess) {
+                showMessage("Password updated successfully!")
+                onResult(true, "Password updated successfully")
+            } else {
+                onResult(false, res.exceptionOrNull()?.message ?: "Failed to reset password")
+            }
+        }
+    }
+
+    suspend fun checkUserExists(identifier: String): Boolean {
+        return repository.checkUserExists(identifier)
+    }
+
     fun logout() {
         repository.logout()
         _screenStack.value = listOf(Screen.LOGIN)

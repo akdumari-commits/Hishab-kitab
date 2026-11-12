@@ -11,7 +11,7 @@ import androidx.compose.runtime.remember
  * 1. Double/multiple character insertion in a single IME batch (e.g. "" -> "11" or "50" -> "5022")
  * 2. Rapid duplicate events within [cooldownMs] (default 320ms) appending or inserting the exact same character
  */
-class SingleKeyFilter(private val cooldownMs: Long = 320L) {
+class SingleKeyFilter(private val cooldownMs: Long = 120L) {
     private var lastInsertTime = 0L
     private var lastChar: Char? = null
 
@@ -59,6 +59,6 @@ class SingleKeyFilter(private val cooldownMs: Long = 320L) {
 }
 
 @Composable
-fun rememberSingleKeyFilter(cooldownMs: Long = 320L): SingleKeyFilter {
+fun rememberSingleKeyFilter(cooldownMs: Long = 120L): SingleKeyFilter {
     return remember { SingleKeyFilter(cooldownMs) }
 }

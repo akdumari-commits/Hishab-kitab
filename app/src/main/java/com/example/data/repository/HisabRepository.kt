@@ -153,6 +153,25 @@ class HisabRepository(private val context: Context) {
             }
         }
 
+    suspend fun resetPassword(identifier: String, newPassword: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            try {
+                val trimmed = identifier.trim()
+                val user = userDao.getUserByEmailOrPhone(trimmed)
+                    ?: return@withContext Result.failure(Exception("No account registered with '$trimmed'"))
+                val updated = user.copy(passwordHash = hashPassword(newPassword))
+                userDao.updateUser(updated)
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun checkUserExists(identifier: String): Boolean =
+        withContext(Dispatchers.IO) {
+            userDao.getUserByEmailOrPhone(identifier.trim()) != null
+        }
+
     suspend fun createDemoAccount(): UserEntity = withContext(Dispatchers.IO) {
         val existingDemo = userDao.getUserByEmailOrPhone("demo@hisabpro.in")
         if (existingDemo != null) {

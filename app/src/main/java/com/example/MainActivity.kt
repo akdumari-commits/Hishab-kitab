@@ -38,8 +38,8 @@ class MainActivity : ComponentActivity() {
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
             val now = SystemClock.uptimeMillis()
-            // In browser streaming emulators, duplicate hardware KeyDown events fire within ~200ms
-            if (event.keyCode == lastKeyDownCode && (now - lastKeyDownTime) < 200L) {
+            // In browser streaming emulators, duplicate hardware KeyDown events fire within ~90ms
+            if (event.keyCode == lastKeyDownCode && (now - lastKeyDownTime) < 90L) {
                 return true
             }
             lastKeyDownTime = now

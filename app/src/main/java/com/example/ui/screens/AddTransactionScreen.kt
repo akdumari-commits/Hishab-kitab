@@ -55,7 +55,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
 
     val onAddPreset: (Int) -> Unit = { preset ->
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastPresetClickMillis >= 400L) {
+        if (now - lastPresetClickMillis >= 160L) {
             lastPresetClickMillis = now
             val current = amountStr.toDoubleOrNull() ?: 0.0
             val newAmount = (current + preset).toLong()
@@ -487,7 +487,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                                         Surface(
                                             onClick = {
                                                 val now = System.currentTimeMillis()
-                                                if (now - lastPresetClickMillis >= 250L) {
+                                                if (now - lastPresetClickMillis >= 140L) {
                                                     lastPresetClickMillis = now
                                                     when (key) {
                                                         "⌫" -> if (amountStr.isNotEmpty()) amountStr = amountStr.dropLast(1)

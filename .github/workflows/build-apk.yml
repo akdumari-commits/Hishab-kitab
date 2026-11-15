@@ -3,10 +3,14 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 permissions:
   contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -24,12 +28,25 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Accept Android SDK Licenses
+        run: |
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -n "$SDK_DIR" ] && [ -d "$SDK_DIR" ]; then
+            mkdir -p "$SDK_DIR/licenses"
+            yes | "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          fi
+
       - name: Setup Android Debug Keystore
         run: |
-          if [ -f "debug.keystore.base64" ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-          else
-            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          rm -f debug.keystore app/debug.keystore
+          if [ -s "debug.keystore.base64" ]; then
+            base64 -d debug.keystore.base64 > debug.keystore || true
+          fi
+          if [ ! -s "debug.keystore" ]; then
+            keytool -genkeypair -v -keystore debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
           cp debug.keystore app/debug.keystore 2>/dev/null || true
 
@@ -38,28 +55,40 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew 2>/dev/null || true
+      - name: Prepare Gradle Wrapper
+        run: |
+          if [ -f "./gradlew" ]; then
+            sed -i 's/\r$//' ./gradlew
+            chmod +x ./gradlew
+          fi
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -Djava.awt.headless=true"
+        run: |
+          gradle assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m -Djava.awt.headless=true"
 
       - name: Prepare APK for Release
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/debug/*.apk release-output/hisab-pro-debug.apk
+          APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "Error: Debug APK not found!"
+            exit 1
+          fi
+          cp "$APK_FILE" release-output/hisab-pro-debug.apk
+          ls -lh release-output/hisab-pro-debug.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: hisab-pro-debug-apk
           path: release-output/hisab-pro-debug.apk
+          retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          tag_name: "v1.0.${{ github.run_number }}"
+          tag_name: "v1.0.${{ github.run_number }}.${{ github.run_attempt }}"
           name: "Hisab Pro Build #${{ github.run_number }}"
           files: release-output/hisab-pro-debug.apk
         env:

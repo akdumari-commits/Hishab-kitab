@@ -30,6 +30,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.CustomerEntity
 import com.example.data.model.CustomerWithBalance
 import com.example.localization.AppStrings
@@ -37,6 +39,7 @@ import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.HisabViewModel
 import com.example.ui.viewmodel.Screen
+import com.example.util.MobileValidationUtils
 import com.example.util.rememberSingleKeyFilter
 import java.io.File
 import java.util.*
@@ -65,6 +68,8 @@ fun CustomersScreen(viewModel: HisabViewModel) {
         customersWithBalances.filter { cwb ->
             val matchesQuery = cwb.customer.name.contains(searchQuery, ignoreCase = true) ||
                     cwb.customer.phone.contains(searchQuery) ||
+                    cwb.customer.secondaryPhone.contains(searchQuery) ||
+                    cwb.customer.alternativePhone.contains(searchQuery) ||
                     cwb.customer.whatsapp.contains(searchQuery)
 
             val matchesFilter = when (selectedFilter) {
@@ -468,19 +473,33 @@ fun AddOrEditCustomerDialog(
     onSave: (CustomerEntity) -> Unit
 ) {
     val context = LocalContext.current
-    var name by remember { mutableStateOf(customer?.name ?: "") }
-    var phone by remember { mutableStateOf(customer?.phone ?: "") }
-    var whatsapp by remember { mutableStateOf(customer?.whatsapp ?: "") }
-    var address by remember { mutableStateOf(customer?.address ?: "") }
-    var photoUri by remember { mutableStateOf(customer?.photoUri ?: "") }
-    var customerType by remember { mutableStateOf(customer?.customerType ?: "CUSTOMER") }
-    var openingBalStr by remember { mutableStateOf(if (customer != null && customer.openingBalance > 0) customer.openingBalance.toString() else "") }
-    var openingType by remember { mutableStateOf(customer?.openingBalanceType ?: "GET") } // GET, GIVE, ZERO
-    var notes by remember { mutableStateOf(customer?.notes ?: "") }
+    var name by remember(customer?.id) { mutableStateOf(customer?.name ?: "") }
+    var primaryPhone by remember(customer?.id) { mutableStateOf(customer?.phone ?: "") }
+    var secondaryPhone by remember(customer?.id) { mutableStateOf(customer?.secondaryPhone ?: "") }
+    var alternativePhone by remember(customer?.id) { mutableStateOf(customer?.alternativePhone ?: "") }
+    var whatsapp by remember(customer?.id) { mutableStateOf(customer?.whatsapp ?: "") }
+    var address by remember(customer?.id) { mutableStateOf(customer?.address ?: "") }
+    var photoUri by remember(customer?.id) { mutableStateOf(customer?.photoUri ?: "") }
+    var customerType by remember(customer?.id) { mutableStateOf(customer?.customerType ?: "CUSTOMER") }
+    var openingBalStr by remember(customer?.id) {
+        mutableStateOf(if (customer != null && customer.openingBalance > 0) customer.openingBalance.toString() else "")
+    }
+    var openingType by remember(customer?.id) { mutableStateOf(customer?.openingBalanceType ?: "GET") } // GET, GIVE, ZERO
+    var notes by remember(customer?.id) { mutableStateOf(customer?.notes ?: "") }
 
-    val phoneFilter = rememberSingleKeyFilter()
+    var showValidationErrors by remember { mutableStateOf(false) }
+
+    val primaryFilter = rememberSingleKeyFilter()
+    val secondaryFilter = rememberSingleKeyFilter()
+    val alternativeFilter = rememberSingleKeyFilter()
     val whatsappFilter = rememberSingleKeyFilter()
     val balFilter = rememberSingleKeyFilter()
+
+    val isNameError = showValidationErrors && name.isBlank()
+    val isPrimaryInvalid = !MobileValidationUtils.isValidMobile(primaryPhone) && (showValidationErrors || primaryPhone.isNotEmpty())
+    val isSecondaryInvalid = !MobileValidationUtils.isValidMobile(secondaryPhone) && (showValidationErrors || secondaryPhone.isNotEmpty())
+    val isAlternativeInvalid = !MobileValidationUtils.isValidMobile(alternativePhone) && (showValidationErrors || alternativePhone.isNotEmpty())
+    val isWhatsappInvalid = !MobileValidationUtils.isValidMobile(whatsapp) && (showValidationErrors || whatsapp.isNotEmpty())
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -502,197 +521,349 @@ fun AddOrEditCustomerDialog(
         }
     }
 
-    AlertDialog(
+    val scrollState = rememberScrollState()
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = if (customer == null) AppStrings.get("add_customer", language) else AppStrings.get("edit_customer", language),
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-        },
-        text = {
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .widthIn(max = 520.dp)
+                .heightIn(max = 720.dp)
+                .imePadding()
+                .padding(vertical = 12.dp)
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
-                // Customer Photo Upload Circle
-                Box(
+                // Pinned Dialog Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (customer == null) AppStrings.get("add_customer", language) else AppStrings.get("edit_customer", language),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = AppStrings.get("cancel", language)
+                        )
+                    }
+                }
+
+                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Fully Scrollable Form Container
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp),
-                    contentAlignment = Alignment.Center
+                        .weight(1f, fill = false)
+                        .verticalScroll(scrollState)
+                        .padding(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CustomerAvatarBadge(
-                            photoUri = photoUri,
-                            customerName = name.ifBlank { "C" },
-                            size = 70.dp,
-                            showUploadIndicator = true,
-                            onAvatarClick = {
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    // Customer Photo Upload Circle
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CustomerAvatarBadge(
+                                photoUri = photoUri,
+                                customerName = name.ifBlank { "C" },
+                                size = 70.dp,
+                                showUploadIndicator = true,
+                                onAvatarClick = {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            TextButton(
+                                onClick = {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            ) {
+                                Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (photoUri.isBlank()) "Upload Photo" else "Change Photo",
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             }
+                        }
+                    }
+
+                    // Customer Name
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text(AppStrings.get("customer_name", language)) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        isError = isNameError,
+                        supportingText = if (isNameError) {
+                            { Text(AppStrings.get("customer_name_required", language)) }
+                        } else null,
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("cust_name_input")
+                    )
+
+                    // 1. Primary Mobile Number
+                    MobileNumberField(
+                        value = primaryPhone,
+                        onValueChange = { raw ->
+                            primaryPhone = MobileValidationUtils.sanitizeMobileInput(primaryFilter, primaryPhone, raw)
+                        },
+                        label = AppStrings.get("primary_mobile", language),
+                        isError = showValidationErrors && !MobileValidationUtils.isValidMobile(primaryPhone),
+                        showSoftWarning = isPrimaryInvalid,
+                        errorMessage = AppStrings.get("invalid_mobile_10_digits", language),
+                        leadingIcon = Icons.Default.Phone,
+                        testTag = "cust_phone_input"
+                    )
+
+                    // 2. Secondary Mobile Number
+                    MobileNumberField(
+                        value = secondaryPhone,
+                        onValueChange = { raw ->
+                            secondaryPhone = MobileValidationUtils.sanitizeMobileInput(secondaryFilter, secondaryPhone, raw)
+                        },
+                        label = AppStrings.get("secondary_mobile", language),
+                        isError = showValidationErrors && !MobileValidationUtils.isValidMobile(secondaryPhone),
+                        showSoftWarning = isSecondaryInvalid,
+                        errorMessage = AppStrings.get("invalid_mobile_10_digits", language),
+                        leadingIcon = Icons.Default.PhoneAndroid,
+                        testTag = "cust_secondary_phone_input"
+                    )
+
+                    // 3. Alternative Mobile Number
+                    MobileNumberField(
+                        value = alternativePhone,
+                        onValueChange = { raw ->
+                            alternativePhone = MobileValidationUtils.sanitizeMobileInput(alternativeFilter, alternativePhone, raw)
+                        },
+                        label = AppStrings.get("alternative_mobile", language),
+                        isError = showValidationErrors && !MobileValidationUtils.isValidMobile(alternativePhone),
+                        showSoftWarning = isAlternativeInvalid,
+                        errorMessage = AppStrings.get("invalid_mobile_10_digits", language),
+                        leadingIcon = Icons.Default.ContactPhone,
+                        testTag = "cust_alternative_phone_input"
+                    )
+
+                    // 4. WhatsApp Number
+                    MobileNumberField(
+                        value = whatsapp,
+                        onValueChange = { raw ->
+                            whatsapp = MobileValidationUtils.sanitizeMobileInput(whatsappFilter, whatsapp, raw)
+                        },
+                        label = AppStrings.get("whatsapp_number", language),
+                        isError = showValidationErrors && !MobileValidationUtils.isValidMobile(whatsapp),
+                        showSoftWarning = isWhatsappInvalid,
+                        errorMessage = AppStrings.get("invalid_mobile_10_digits", language),
+                        leadingIcon = Icons.Default.Chat,
+                        testTag = "cust_whatsapp_input"
+                    )
+
+                    // Customer Type selection
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = AppStrings.get("customer_type", language),
+                            style = MaterialTheme.typography.labelMedium
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        TextButton(
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (photoUri.isBlank()) "Upload Photo" else "Change Photo",
-                                style = MaterialTheme.typography.labelSmall
+                            FilterChip(
+                                selected = customerType == "CUSTOMER",
+                                onClick = { customerType = "CUSTOMER" },
+                                label = { Text(AppStrings.get("type_customer", language)) },
+                                modifier = Modifier.testTag("cust_type_customer")
+                            )
+                            FilterChip(
+                                selected = customerType == "SUPPLIER",
+                                onClick = { customerType = "SUPPLIER" },
+                                label = { Text(AppStrings.get("type_supplier", language)) },
+                                modifier = Modifier.testTag("cust_type_supplier")
                             )
                         }
                     }
+
+                    // Opening balance
+                    OutlinedTextField(
+                        value = openingBalStr,
+                        onValueChange = { openingBalStr = balFilter.filter(openingBalStr, it) },
+                        label = { Text(AppStrings.get("opening_balance", language) + " (₹)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("cust_opening_balance_input")
+                    )
+
+                    if (openingBalStr.toDoubleOrNull() != null && openingBalStr.toDouble() > 0) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = openingType == "GET",
+                                onClick = { openingType = "GET" },
+                                label = { Text(AppStrings.get("you_will_get", language)) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = CreditGreenContainer,
+                                    selectedLabelColor = CreditGreen
+                                )
+                            )
+                            FilterChip(
+                                selected = openingType == "GIVE",
+                                onClick = { openingType = "GIVE" },
+                                label = { Text(AppStrings.get("you_will_give", language)) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = DebitRedContainer,
+                                    selectedLabelColor = DebitRed
+                                )
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = address,
+                        onValueChange = { address = it },
+                        label = { Text(AppStrings.get("business_address", language)) },
+                        leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("cust_address_input")
+                    )
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text(AppStrings.get("notes", language)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("cust_notes_input")
+                    )
                 }
 
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(AppStrings.get("customer_name", language)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("cust_name_input")
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { raw ->
-                        val filtered = phoneFilter.filter(phone, raw)
-                        phone = filtered
-                        if (whatsapp.isEmpty()) whatsapp = filtered
-                    },
-                    label = { Text(AppStrings.get("phone_number", language)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("cust_phone_input")
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = whatsapp,
-                    onValueChange = { whatsapp = whatsappFilter.filter(whatsapp, it) },
-                    label = { Text(AppStrings.get("whatsapp_number", language)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Customer Type selection
-                Text(
-                    text = AppStrings.get("customer_type", language),
-                    style = MaterialTheme.typography.labelMedium
-                )
+                // Pinned Footer Actions
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        selected = customerType == "CUSTOMER",
-                        onClick = { customerType = "CUSTOMER" },
-                        label = { Text(AppStrings.get("type_customer", language)) }
-                    )
-                    FilterChip(
-                        selected = customerType == "SUPPLIER",
-                        onClick = { customerType = "SUPPLIER" },
-                        label = { Text(AppStrings.get("type_supplier", language)) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Opening balance
-                OutlinedTextField(
-                    value = openingBalStr,
-                    onValueChange = { openingBalStr = balFilter.filter(openingBalStr, it) },
-                    label = { Text(AppStrings.get("opening_balance", language) + " (₹)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (openingBalStr.toDoubleOrNull() != null && openingBalStr.toDouble() > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.heightIn(min = 48.dp)
                     ) {
-                        FilterChip(
-                            selected = openingType == "GET",
-                            onClick = { openingType = "GET" },
-                            label = { Text(AppStrings.get("you_will_get", language)) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = CreditGreenContainer,
-                                selectedLabelColor = CreditGreen
-                            )
-                        )
-                        FilterChip(
-                            selected = openingType == "GIVE",
-                            onClick = { openingType = "GIVE" },
-                            label = { Text(AppStrings.get("you_will_give", language)) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = DebitRedContainer,
-                                selectedLabelColor = DebitRed
-                            )
-                        )
+                        Text(AppStrings.get("cancel", language))
+                    }
+                    Button(
+                        onClick = {
+                            showValidationErrors = true
+                            val allPhonesValid = MobileValidationUtils.isValidMobile(primaryPhone) &&
+                                MobileValidationUtils.isValidMobile(secondaryPhone) &&
+                                MobileValidationUtils.isValidMobile(alternativePhone) &&
+                                MobileValidationUtils.isValidMobile(whatsapp)
+
+                            if (name.isNotBlank() && allPhonesValid) {
+                                val obAmount = openingBalStr.toDoubleOrNull() ?: 0.0
+                                val newCust = CustomerEntity(
+                                    id = customer?.id ?: UUID.randomUUID().toString(),
+                                    userId = customer?.userId ?: "",
+                                    name = name.trim(),
+                                    phone = primaryPhone.trim(),
+                                    secondaryPhone = secondaryPhone.trim(),
+                                    alternativePhone = alternativePhone.trim(),
+                                    whatsapp = whatsapp.trim(),
+                                    address = address.trim(),
+                                    photoUri = photoUri,
+                                    customerType = customerType,
+                                    openingBalance = obAmount,
+                                    openingBalanceType = if (obAmount > 0) openingType else "ZERO",
+                                    notes = notes.trim(),
+                                    createdAt = customer?.createdAt ?: System.currentTimeMillis(),
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                                onSave(newCust)
+                            }
+                        },
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("cust_save_btn")
+                    ) {
+                        Text(AppStrings.get("save", language), fontWeight = FontWeight.Bold)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    label = { Text(AppStrings.get("business_address", language)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = { Text(AppStrings.get("notes", language)) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        val obAmount = openingBalStr.toDoubleOrNull() ?: 0.0
-                        val newCust = CustomerEntity(
-                            id = customer?.id ?: UUID.randomUUID().toString(),
-                            userId = customer?.userId ?: "",
-                            name = name.trim(),
-                            phone = phone.trim(),
-                            whatsapp = whatsapp.trim().ifBlank { phone.trim() },
-                            address = address.trim(),
-                            photoUri = photoUri,
-                            customerType = customerType,
-                            openingBalance = obAmount,
-                            openingBalanceType = if (obAmount > 0) openingType else "ZERO",
-                            notes = notes.trim(),
-                            createdAt = customer?.createdAt ?: System.currentTimeMillis(),
-                            updatedAt = System.currentTimeMillis()
-                        )
-                        onSave(newCust)
-                    }
-                },
-                modifier = Modifier.testTag("cust_save_btn")
-            ) {
-                Text(AppStrings.get("save", language))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppStrings.get("cancel", language))
             }
         }
+    }
+}
+
+@Composable
+private fun MobileNumberField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    isError: Boolean,
+    showSoftWarning: Boolean,
+    errorMessage: String,
+    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    testTag: String
+) {
+    val hasValidationError = isError || (showSoftWarning && value.isNotEmpty() && value.length != 10)
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text("10-digit mobile number") },
+        leadingIcon = { Icon(leadingIcon, contentDescription = null) },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                Text(
+                    text = "${value.length}/10",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (value.length == 10) CreditGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+        },
+        isError = hasValidationError,
+        supportingText = if (hasValidationError) {
+            { Text("$errorMessage (${value.length}/10)") }
+        } else null,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            autoCorrectEnabled = false
+        ),
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag)
     )
 }

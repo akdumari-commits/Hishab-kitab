@@ -240,13 +240,41 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                val primaryDisplay = customer.phone.ifBlank {
+                                    customer.secondaryPhone.ifBlank {
+                                        customer.alternativePhone.ifBlank { customer.whatsapp }
+                                    }
+                                }
                                 Text(
-                                    text = "${customer.phone}${if (customer.address.isNotBlank()) " • ${customer.address}" else ""}",
+                                    text = listOfNotNull(
+                                        primaryDisplay.takeIf { it.isNotBlank() },
+                                        customer.address.takeIf { it.isNotBlank() }
+                                    ).joinToString(" • "),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                val extraNumbers = buildList {
+                                    if (customer.secondaryPhone.isNotBlank() && customer.secondaryPhone != primaryDisplay) {
+                                        add("2nd: ${customer.secondaryPhone}")
+                                    }
+                                    if (customer.alternativePhone.isNotBlank() && customer.alternativePhone != primaryDisplay) {
+                                        add("Alt: ${customer.alternativePhone}")
+                                    }
+                                    if (customer.whatsapp.isNotBlank() && customer.whatsapp != primaryDisplay) {
+                                        add("WA: ${customer.whatsapp}")
+                                    }
+                                }
+                                if (extraNumbers.isNotEmpty()) {
+                                    Text(
+                                        text = extraNumbers.joinToString(" • "),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 Text(
                                     text = if (customer.photoUri.isBlank()) "Tap avatar to add photo" else "Tap avatar to change photo",
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
@@ -289,7 +317,12 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                                 // Call Button
                                 IconButton(
                                     onClick = {
-                                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${customer.phone}"))
+                                        val dialTarget = customer.phone.ifBlank {
+                                            customer.secondaryPhone.ifBlank {
+                                                customer.alternativePhone.ifBlank { customer.whatsapp }
+                                            }
+                                        }
+                                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$dialTarget"))
                                         context.startActivity(dialIntent)
                                     },
                                     modifier = Modifier

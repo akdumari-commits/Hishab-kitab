@@ -584,12 +584,15 @@ class HisabRepository(private val context: Context) {
                     put("id", c.id)
                     put("name", c.name)
                     put("phone", c.phone)
+                    put("secondaryPhone", c.secondaryPhone)
+                    put("alternativePhone", c.alternativePhone)
                     put("whatsapp", c.whatsapp)
                     put("address", c.address)
                     put("customerType", c.customerType)
                     put("openingBalance", c.openingBalance)
                     put("openingBalanceType", c.openingBalanceType)
                     put("notes", c.notes)
+                    put("photoUri", c.photoUri)
                     put("createdAt", c.createdAt)
                     put("updatedAt", c.updatedAt)
                 })
@@ -716,12 +719,15 @@ class HisabRepository(private val context: Context) {
                         userId = uid,
                         name = cObj.getString("name"),
                         phone = cObj.optString("phone", ""),
+                        secondaryPhone = cObj.optString("secondaryPhone", ""),
+                        alternativePhone = cObj.optString("alternativePhone", ""),
                         whatsapp = cObj.optString("whatsapp", ""),
                         address = cObj.optString("address", ""),
                         customerType = cObj.optString("customerType", "CUSTOMER"),
                         openingBalance = cObj.optDouble("openingBalance", 0.0),
                         openingBalanceType = cObj.optString("openingBalanceType", "ZERO"),
                         notes = cObj.optString("notes", ""),
+                        photoUri = cObj.optString("photoUri", ""),
                         createdAt = cObj.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = cObj.optLong("updatedAt", System.currentTimeMillis())
                     )

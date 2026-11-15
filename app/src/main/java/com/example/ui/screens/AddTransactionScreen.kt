@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CustomerEntity
+import com.example.localization.AppLanguage
 import com.example.localization.AppStrings
 import com.example.ui.components.HisabTopAppBar
 import com.example.ui.theme.*
@@ -73,7 +74,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
     Scaffold(
         topBar = {
             HisabTopAppBar(
-                title = AppStrings.get("nav_add", language),
+                title = if (language == AppLanguage.HINDI) "क्रेडिट / डेबिट एंट्री" else "Credit / Debit Entry",
                 subtitle = if (isGot) AppStrings.get("got_money_sub", language) else AppStrings.get("gave_money_sub", language),
                 currentLanguage = language,
                 onLanguageChange = { viewModel.setLanguage(it) },

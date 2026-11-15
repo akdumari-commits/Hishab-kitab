@@ -306,7 +306,7 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = AppStrings.get("nav_add", language),
+                            text = if (language == AppLanguage.HINDI) "+ क्रेडिट / डेबिट" else "+ Credit / Debit",
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false

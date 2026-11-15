@@ -62,3 +62,30 @@ class SingleKeyFilter(private val cooldownMs: Long = 120L) {
 fun rememberSingleKeyFilter(cooldownMs: Long = 120L): SingleKeyFilter {
     return remember { SingleKeyFilter(cooldownMs) }
 }
+
+/**
+ * Standard 10-digit numeric mobile validation helpers.
+ */
+object MobileValidationUtils {
+    private val TEN_DIGIT_REGEX = Regex("^\\d{10}$")
+
+    /**
+     * Filters out non-numeric characters while applying duplicate-key suppression,
+     * and caps input to 10 digits.
+     */
+    fun sanitizeMobileInput(filter: SingleKeyFilter, oldVal: String, newVal: String): String {
+        val deduplicated = filter.filter(oldVal, newVal)
+        val digitsOnly = deduplicated.filter { it.isDigit() }
+        return if (digitsOnly.length > 10) digitsOnly.take(10) else digitsOnly
+    }
+
+    /**
+     * Validates a mobile number string.
+     * Blank values are allowed when [required] is false; non-blank values must be exactly 10 digits.
+     */
+    fun isValidMobile(number: String, required: Boolean = false): Boolean {
+        val trimmed = number.trim()
+        if (trimmed.isEmpty()) return !required
+        return TEN_DIGIT_REGEX.matches(trimmed)
+    }
+}

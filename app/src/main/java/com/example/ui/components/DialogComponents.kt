@@ -130,7 +130,10 @@ fun WhatsAppReminderDialog(
             Button(
                 onClick = {
                     onReminderSent(reminderMessage)
-                    val phone = customer.whatsapp.ifBlank { customer.phone }
+                    val phone = customer.whatsapp
+                        .ifBlank { customer.phone }
+                        .ifBlank { customer.secondaryPhone }
+                        .ifBlank { customer.alternativePhone }
                     val cleanPhone = phone.replace(Regex("[^0-9]"), "")
                     val targetPhone = if (cleanPhone.length == 10) "91$cleanPhone" else cleanPhone
 

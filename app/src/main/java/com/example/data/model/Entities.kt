@@ -23,6 +23,8 @@ data class CustomerEntity(
     val userId: String,
     val name: String,
     val phone: String,
+    val secondaryPhone: String = "",
+    val alternativePhone: String = "",
     val whatsapp: String = "",
     val address: String = "",
     val customerType: String = "CUSTOMER", // CUSTOMER, SUPPLIER, OTHER

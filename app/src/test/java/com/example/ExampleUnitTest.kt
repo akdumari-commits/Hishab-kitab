@@ -38,6 +38,11 @@ class ExampleUnitTest {
             "you_will_give",
             "dashboard_title",
             "customers_title",
+            "primary_mobile",
+            "secondary_mobile",
+            "alternative_mobile",
+            "whatsapp_number",
+            "invalid_mobile_10_digits",
             "reminder_title",
             "receipt_title",
             "backup_restore",
@@ -83,5 +88,39 @@ class ExampleUnitTest {
         // 6. User backspaces: length decreases
         val outBack = filter.filter("50", "5")
         assertEquals("5", outBack)
+    }
+
+    @Test
+    fun testFourMobileNumbersValidationAndIndependence() {
+        val utils = com.example.util.MobileValidationUtils
+        val filter = com.example.util.SingleKeyFilter(cooldownMs = 120L)
+
+        // Valid 10-digit numeric
+        assertTrue(utils.isValidMobile("9876543210"))
+        // Optional blank allowed when not required
+        assertTrue(utils.isValidMobile(""))
+        assertFalse(utils.isValidMobile("", required = true))
+        // Invalid lengths or non-numeric
+        assertFalse(utils.isValidMobile("98765"))
+        assertFalse(utils.isValidMobile("98765432101"))
+        assertFalse(utils.isValidMobile("98765abcde"))
+
+        // Sanitizer strips non-digits and caps to 10 digits
+        assertEquals("9876543210", utils.sanitizeMobileInput(filter, "", "98765-4321012"))
+
+        // Independent storage of all 4 numbers on CustomerEntity
+        val customer = com.example.data.model.CustomerEntity(
+            id = "c1",
+            userId = "u1",
+            name = "Test Customer",
+            phone = "9811111111",
+            secondaryPhone = "9822222222",
+            alternativePhone = "9833333333",
+            whatsapp = "9844444444"
+        )
+        assertEquals("9811111111", customer.phone)
+        assertEquals("9822222222", customer.secondaryPhone)
+        assertEquals("9833333333", customer.alternativePhone)
+        assertEquals("9844444444", customer.whatsapp)
     }
 }

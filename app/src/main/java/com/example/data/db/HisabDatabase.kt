@@ -16,7 +16,7 @@ import com.example.data.model.UserEntity
         TransactionEntity::class,
         ReminderLogEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class HisabDatabase : RoomDatabase() {
@@ -35,6 +35,13 @@ abstract class HisabDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE customers ADD COLUMN secondaryPhone TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE customers ADD COLUMN alternativePhone TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): HisabDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -42,7 +49,7 @@ abstract class HisabDatabase : RoomDatabase() {
                     HisabDatabase::class.java,
                     "hisab_pro_database.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

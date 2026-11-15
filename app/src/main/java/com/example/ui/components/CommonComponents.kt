@@ -365,9 +365,9 @@ fun HisabBottomNav(
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Add Entry",
+                            text = "Credit/Debit",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             ),

@@ -55,6 +55,8 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
     var showEditCustomerDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showAddTxnType by remember { mutableStateOf<String?>(null) } // "GAVE" or "GOT"
+    var pendingPinAction by remember { mutableStateOf<Pair<TransactionEntity, Boolean>?>(null) } // (txn, isDelete)
+    var editingTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
 
     // Intercept back button to return to Customers screen
     BackHandler {
@@ -150,49 +152,65 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // GAVE MONEY (Red button)
+                    // GAVE MONEY / Debit (Red button)
                     Button(
                         onClick = { showAddTxnType = "GAVE" },
-                        colors = ButtonDefaults.buttonColors(containerColor = DebitRed),
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DebitRed,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("btn_gave_money")
                     ) {
-                        Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Default.CallMade,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = AppStrings.get("gave_money", language),
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                        }
+                        Text(
+                            text = AppStrings.get("gave_money", language),
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
-                    // GOT MONEY (Green button)
+                    // GOT MONEY / Credit (Green button)
                     Button(
                         onClick = { showAddTxnType = "GOT" },
-                        colors = ButtonDefaults.buttonColors(containerColor = CreditGreen),
-                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CreditGreen,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("btn_got_money")
                     ) {
-                        Icon(Icons.Default.CallReceived, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = AppStrings.get("got_money", language),
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                        }
+                        Text(
+                            text = AppStrings.get("got_money", language),
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -538,68 +556,107 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                             .fillMaxWidth()
                             .clickable { viewModel.openReceiptDialog(txn) }
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
-                            CustomerAvatarBadge(
-                                photoUri = customer.photoUri,
-                                customerName = customer.name,
-                                isGot = isGot,
-                                size = 38.dp,
-                                badgeSize = 14.dp,
-                                showUploadIndicator = false,
-                                onAvatarClick = {
-                                    photoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                }
-                            )
-
-                            Spacer(modifier = Modifier.width(10.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = formatShortDate(txn.dateMillis),
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CustomerAvatarBadge(
+                                    photoUri = customer.photoUri,
+                                    customerName = customer.name,
+                                    isGot = isGot,
+                                    size = 38.dp,
+                                    badgeSize = 14.dp,
+                                    showUploadIndicator = false,
+                                    onAvatarClick = {
+                                        photoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
                                 )
-                                Text(
-                                    text = "${txn.paymentMethod}${if (txn.billNumber.isNotBlank()) " • Bill #${txn.billNumber}" else ""}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (txn.remarks.isNotBlank()) {
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = txn.remarks,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        text = formatShortDate(txn.dateMillis),
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${txn.paymentMethod}${if (txn.billNumber.isNotBlank()) " • Bill #${txn.billNumber}" else ""}",
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    if (txn.remarks.isNotBlank()) {
+                                        Text(
+                                            text = txn.remarks,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (isGot) CreditGreen else DebitRed
+                                        ),
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = "Bal: ${formatCurrency(item.runningBalance)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
                                 }
                             }
 
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isGot) CreditGreen else DebitRed
-                                    ),
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = "Bal: ${formatCurrency(item.runningBalance)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = { pendingPinAction = txn to false },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("btn_edit_txn_${txn.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = AppStrings.get("edit_transaction", language),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { pendingPinAction = txn to true },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("btn_delete_txn_${txn.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = AppStrings.get("delete_transaction", language),
+                                        tint = DebitRed,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -664,6 +721,46 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
                     dateMillis = dateMillis
                 )
                 showAddTxnType = null
+            }
+        )
+    }
+
+    // Security PIN Verification Dialog before Edit or Delete
+    pendingPinAction?.let { (targetTxn, isDelete) ->
+        TransactionPinVerifyDialog(
+            isDeleteAction = isDelete,
+            hasCustomPin = viewModel.hasCustomPin(),
+            currentLanguage = language,
+            onVerifyPin = { pin -> viewModel.verifyActionPin(pin) },
+            onVerified = {
+                pendingPinAction = null
+                if (isDelete) {
+                    viewModel.deleteTransaction(targetTxn)
+                } else {
+                    editingTransaction = targetTxn
+                }
+            },
+            onDismiss = { pendingPinAction = null }
+        )
+    }
+
+    // Edit Transaction Modal (opened only after Security PIN verification)
+    editingTransaction?.let { targetTxn ->
+        EditTransactionDialog(
+            transaction = targetTxn,
+            customerName = customer.name,
+            currentLanguage = language,
+            onDismiss = { editingTransaction = null },
+            onUpdate = { type, amount, remarks, method, dateMillis ->
+                viewModel.updateTransaction(
+                    existingTxn = targetTxn,
+                    type = type,
+                    amount = amount,
+                    remarks = remarks,
+                    paymentMethod = method,
+                    dateMillis = dateMillis
+                )
+                editingTransaction = null
             }
         )
     }

@@ -88,6 +88,19 @@ class HisabRepository(private val context: Context) {
         return valid
     }
 
+    fun hasCustomPin(): Boolean {
+        return !prefs.getString("security_pin_hash", "").isNullOrEmpty()
+    }
+
+    fun verifyActionPin(pin: String): Boolean {
+        val storedHash = prefs.getString("security_pin_hash", "") ?: ""
+        return if (storedHash.isNotEmpty()) {
+            storedHash == hashPassword(pin)
+        } else {
+            pin == "1234"
+        }
+    }
+
     fun removePin() {
         prefs.edit()
             .remove("security_pin_hash")

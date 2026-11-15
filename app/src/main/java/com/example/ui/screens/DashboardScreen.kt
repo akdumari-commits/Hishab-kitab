@@ -50,6 +50,9 @@ fun DashboardScreen(viewModel: HisabViewModel) {
         allTransactions.take(8)
     }
 
+    var pendingPinAction by remember { mutableStateOf<Pair<TransactionEntity, Boolean>?>(null) } // (txn, isDelete)
+    var editingTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
+
     Scaffold(
         topBar = {
             HisabTopAppBar(
@@ -482,76 +485,156 @@ fun DashboardScreen(viewModel: HisabViewModel) {
                             .fillMaxWidth()
                             .clickable { viewModel.openReceiptDialog(txn) }
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
-                            // Customer avatar with image/upload icon and near small directional arrow
-                            CustomerAvatarBadge(
-                                photoUri = customer?.photoUri,
-                                customerName = customer?.name ?: "Customer",
-                                isGot = isGot,
-                                size = 42.dp,
-                                badgeSize = 16.dp,
-                                showUploadIndicator = customer?.photoUri.isNullOrBlank(),
-                                onAvatarClick = {
-                                    customer?.let { viewModel.selectCustomer(it.id) }
-                                }
-                            )
-
-                            // Middle Info Column (weighted to never push amount off-screen)
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 10.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = customer?.name ?: "Customer",
-                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                // Customer avatar with image/upload icon and near small directional arrow
+                                CustomerAvatarBadge(
+                                    photoUri = customer?.photoUri,
+                                    customerName = customer?.name ?: "Customer",
+                                    isGot = isGot,
+                                    size = 42.dp,
+                                    badgeSize = 16.dp,
+                                    showUploadIndicator = customer?.photoUri.isNullOrBlank(),
+                                    onAvatarClick = {
+                                        customer?.let { viewModel.selectCustomer(it.id) }
+                                    }
                                 )
-                                Text(
-                                    text = "${formatShortDate(txn.dateMillis)} • ${txn.paymentMethod}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (txn.remarks.isNotBlank()) {
+
+                                // Middle Info Column (weighted to never push amount off-screen)
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 10.dp)
+                                ) {
                                     Text(
-                                        text = txn.remarks,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        text = customer?.name ?: "Customer",
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${formatShortDate(txn.dateMillis)} • ${txn.paymentMethod}",
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    if (txn.remarks.isNotBlank()) {
+                                        Text(
+                                            text = txn.remarks,
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                // Right-aligned Amount & Status
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isGot) CreditGreen else DebitRed
+                                        ),
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = if (isGot) AppStrings.get("got_money", language) else AppStrings.get("gave_money", language),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isGot) CreditGreen else DebitRed,
+                                        maxLines = 1
+                                    )
                                 }
                             }
 
-                            // Right-aligned Amount & Status
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = (if (isGot) "+" else "-") + formatCurrency(txn.amount),
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isGot) CreditGreen else DebitRed
-                                    ),
-                                    maxLines = 1
-                                )
-                                Text(
-                                    text = if (isGot) AppStrings.get("got_money", language) else AppStrings.get("gave_money", language),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isGot) CreditGreen else DebitRed,
-                                    maxLines = 1
-                                )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                IconButton(
+                                    onClick = { pendingPinAction = txn to false },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("btn_dash_edit_txn_${txn.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = AppStrings.get("edit_transaction", language),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { pendingPinAction = txn to true },
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("btn_dash_delete_txn_${txn.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = AppStrings.get("delete_transaction", language),
+                                        tint = DebitRed,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // Security PIN Verification Dialog before Edit or Delete
+    pendingPinAction?.let { (targetTxn, isDelete) ->
+        TransactionPinVerifyDialog(
+            isDeleteAction = isDelete,
+            hasCustomPin = viewModel.hasCustomPin(),
+            currentLanguage = language,
+            onVerifyPin = { pin -> viewModel.verifyActionPin(pin) },
+            onVerified = {
+                pendingPinAction = null
+                if (isDelete) {
+                    viewModel.deleteTransaction(targetTxn)
+                } else {
+                    editingTransaction = targetTxn
+                }
+            },
+            onDismiss = { pendingPinAction = null }
+        )
+    }
+
+    // Edit Transaction Modal (opened only after Security PIN verification)
+    editingTransaction?.let { targetTxn ->
+        val targetCustName = customersWithBalances.find { it.customer.id == targetTxn.customerId }?.customer?.name ?: "Customer"
+        EditTransactionDialog(
+            transaction = targetTxn,
+            customerName = targetCustName,
+            currentLanguage = language,
+            onDismiss = { editingTransaction = null },
+            onUpdate = { type, amount, remarks, method, dateMillis ->
+                viewModel.updateTransaction(
+                    existingTxn = targetTxn,
+                    type = type,
+                    amount = amount,
+                    remarks = remarks,
+                    paymentMethod = method,
+                    dateMillis = dateMillis
+                )
+                editingTransaction = null
+            }
+        )
     }
 }

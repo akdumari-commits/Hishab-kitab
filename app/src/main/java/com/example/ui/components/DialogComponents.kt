@@ -7,10 +7,15 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -490,4 +495,342 @@ fun PinUnlockOverlay(
             }
         }
     }
+}
+
+@Composable
+fun TransactionPinVerifyDialog(
+    isDeleteAction: Boolean,
+    hasCustomPin: Boolean,
+    currentLanguage: AppLanguage,
+    onVerifyPin: (String) -> Boolean,
+    onVerified: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    val pinFilter = rememberSingleKeyFilter()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(if (isDeleteAction) DebitRedContainer else MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isDeleteAction) Icons.Default.DeleteForever else Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = if (isDeleteAction) DebitRed else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        },
+        title = {
+            Text(
+                text = AppStrings.get("verify_pin_title", currentLanguage),
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = if (isDeleteAction) {
+                        AppStrings.get("verify_pin_to_delete", currentLanguage)
+                    } else {
+                        AppStrings.get("verify_pin_to_edit", currentLanguage)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (!hasCustomPin) {
+                    Text(
+                        text = AppStrings.get("default_pin_hint", currentLanguage),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                if (pinError != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("txn_pin_error_alert")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = pinError!!,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = pinInput,
+                    onValueChange = { raw ->
+                        val filtered = pinFilter.filter(pinInput, raw)
+                        if (filtered.length <= 6 && filtered.all { it.isDigit() }) {
+                            pinInput = filtered
+                            pinError = null
+                        }
+                    },
+                    label = { Text(AppStrings.get("enter_pin", currentLanguage)) },
+                    placeholder = { Text("••••") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        autoCorrectEnabled = false
+                    ),
+                    isError = pinError != null,
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("txn_pin_input")
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val trimmed = pinInput.trim()
+                    if (trimmed.isNotEmpty() && onVerifyPin(trimmed)) {
+                        onVerified()
+                    } else {
+                        pinError = AppStrings.get("incorrect_pin", currentLanguage)
+                        pinInput = ""
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDeleteAction) DebitRed else MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("txn_pin_verify_btn")
+            ) {
+                Text(
+                    text = AppStrings.get("verify_continue", currentLanguage),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text(AppStrings.get("cancel", currentLanguage))
+            }
+        }
+    )
+}
+
+@Composable
+fun EditTransactionDialog(
+    transaction: TransactionEntity,
+    customerName: String,
+    currentLanguage: AppLanguage,
+    onDismiss: () -> Unit,
+    onUpdate: (type: String, amount: Double, remarks: String, method: String, dateMillis: Long) -> Unit
+) {
+    var txnType by remember(transaction.id) { mutableStateOf(transaction.type) }
+    var amountStr by remember(transaction.id) {
+        mutableStateOf(
+            if (transaction.amount % 1.0 == 0.0) transaction.amount.toLong().toString()
+            else transaction.amount.toString()
+        )
+    }
+    var remarks by remember(transaction.id) { mutableStateOf(transaction.remarks) }
+    var method by remember(transaction.id) {
+        mutableStateOf(if (transaction.paymentMethod == "BANK") "BANK_TRANSFER" else transaction.paymentMethod)
+    }
+    var transactionDateMillis by remember(transaction.id) { mutableLongStateOf(transaction.dateMillis) }
+    val amountFilter = rememberSingleKeyFilter()
+    val isGot = txnType == "GOT"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isGot) CreditGreenContainer else DebitRedContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isGot) Icons.Default.Check else Icons.Default.CallMade,
+                        contentDescription = null,
+                        tint = if (isGot) CreditGreen else DebitRed,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = AppStrings.get("edit_transaction", currentLanguage),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = customerName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Transaction Type Toggle: Gave money (Red) / Got money (Green)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = txnType == "GAVE",
+                        onClick = { txnType = "GAVE" },
+                        label = { Text(AppStrings.get("gave_money", currentLanguage), fontWeight = FontWeight.SemiBold) },
+                        leadingIcon = {
+                            Icon(Icons.Default.CallMade, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = DebitRedContainer,
+                            selectedLabelColor = DebitRed,
+                            selectedLeadingIconColor = DebitRed
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("edit_txn_type_gave")
+                    )
+                    FilterChip(
+                        selected = txnType == "GOT",
+                        onClick = { txnType = "GOT" },
+                        label = { Text(AppStrings.get("got_money", currentLanguage), fontWeight = FontWeight.SemiBold) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = CreditGreenContainer,
+                            selectedLabelColor = CreditGreen,
+                            selectedLeadingIconColor = CreditGreen
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("edit_txn_type_got")
+                    )
+                }
+
+                OutlinedTextField(
+                    value = amountStr,
+                    onValueChange = { amountStr = amountFilter.filter(amountStr, it) },
+                    label = { Text(AppStrings.get("amount", currentLanguage) + " (₹)") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        autoCorrectEnabled = false
+                    ),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_txn_amount_input")
+                )
+
+                // Payment Mode Chips
+                Column {
+                    Text(
+                        text = AppStrings.get("payment_method", currentLanguage),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(
+                            listOf(
+                                "CASH" to "method_cash",
+                                "UPI" to "method_upi",
+                                "BANK_TRANSFER" to "method_bank",
+                                "CHEQUE" to "method_cheque"
+                            )
+                        ) { (code, key) ->
+                            FilterChip(
+                                selected = method == code,
+                                onClick = { method = code },
+                                label = { Text(AppStrings.get(key, currentLanguage)) }
+                            )
+                        }
+                    }
+                }
+
+                TransactionDateField(
+                    dateMillis = transactionDateMillis,
+                    onDateSelected = { transactionDateMillis = it },
+                    label = AppStrings.get("transaction_date", currentLanguage),
+                    testTag = "edit_txn_date_input"
+                )
+
+                OutlinedTextField(
+                    value = remarks,
+                    onValueChange = { remarks = it },
+                    label = { Text(AppStrings.get("remarks", currentLanguage)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_txn_remarks_input")
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsedAmount = amountStr.toDoubleOrNull()
+                    if (parsedAmount != null && parsedAmount > 0) {
+                        onUpdate(txnType, parsedAmount, remarks.trim(), method, transactionDateMillis)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isGot) CreditGreen else DebitRed
+                ),
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("edit_txn_save_btn")
+            ) {
+                Text(AppStrings.get("update_transaction", currentLanguage), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text(AppStrings.get("cancel", currentLanguage))
+            }
+        }
+    )
 }

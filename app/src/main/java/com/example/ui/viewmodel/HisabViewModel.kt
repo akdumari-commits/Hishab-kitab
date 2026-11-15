@@ -185,6 +185,14 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
         return repository.verifyPin(pin)
     }
 
+    fun verifyActionPin(pin: String): Boolean {
+        return repository.verifyActionPin(pin)
+    }
+
+    fun hasCustomPin(): Boolean {
+        return repository.hasCustomPin()
+    }
+
     fun setPin(pin: String) {
         repository.setPin(pin)
         showMessage(string("success"))
@@ -292,6 +300,27 @@ class HisabViewModel(application: Application) : AndroidViewModel(application) {
             if (currentScreen.value == Screen.ADD_TRANSACTION) {
                 navigateBack()
             }
+        }
+    }
+
+    fun updateTransaction(
+        existingTxn: TransactionEntity,
+        type: String,
+        amount: Double,
+        remarks: String,
+        paymentMethod: String,
+        dateMillis: Long
+    ) {
+        viewModelScope.launch {
+            val updated = existingTxn.copy(
+                type = type,
+                amount = amount,
+                remarks = remarks,
+                paymentMethod = paymentMethod,
+                dateMillis = dateMillis
+            )
+            repository.saveTransaction(updated)
+            showMessage(string("success"))
         }
     }
 

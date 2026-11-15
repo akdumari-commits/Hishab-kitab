@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -652,13 +654,14 @@ fun CustomerDetailScreen(viewModel: HisabViewModel) {
             transactionType = showAddTxnType!!,
             language = language,
             onDismiss = { showAddTxnType = null },
-            onSave = { amount, remarks, method ->
+            onSave = { amount, remarks, method, dateMillis ->
                 viewModel.addTransaction(
                     customerId = customer.id,
                     type = showAddTxnType!!,
                     amount = amount,
                     remarks = remarks,
-                    paymentMethod = method
+                    paymentMethod = method,
+                    dateMillis = dateMillis
                 )
                 showAddTxnType = null
             }
@@ -673,7 +676,7 @@ fun QuickAddTransactionDialog(
     transactionType: String, // GAVE or GOT
     language: com.example.localization.AppLanguage,
     onDismiss: () -> Unit,
-    onSave: (amount: Double, remarks: String, method: String) -> Unit
+    onSave: (amount: Double, remarks: String, method: String, dateMillis: Long) -> Unit
 ) {
     val isGot = transactionType == "GOT"
     var amountStr by remember { mutableStateOf("") }
@@ -681,6 +684,7 @@ fun QuickAddTransactionDialog(
     var lastPresetClickMillis by remember { mutableLongStateOf(0L) }
     var remarks by remember { mutableStateOf("") }
     var method by remember { mutableStateOf("CASH") }
+    var transactionDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -715,7 +719,11 @@ fun QuickAddTransactionDialog(
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = { amountStr = amountFilter.filter(amountStr, it) },
@@ -771,6 +779,14 @@ fun QuickAddTransactionDialog(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
+                TransactionDateField(
+                    dateMillis = transactionDateMillis,
+                    onDateSelected = { transactionDateMillis = it },
+                    label = AppStrings.get("transaction_date", language),
+                    testTag = "quick_txn_date_input"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = remarks,
                     onValueChange = { remarks = it },
@@ -785,7 +801,7 @@ fun QuickAddTransactionDialog(
                 onClick = {
                     val amount = amountStr.toDoubleOrNull()
                     if (amount != null && amount > 0) {
-                        onSave(amount, remarks, method)
+                        onSave(amount, remarks, method, transactionDateMillis)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(

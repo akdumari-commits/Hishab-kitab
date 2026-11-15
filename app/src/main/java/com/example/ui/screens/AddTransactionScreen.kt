@@ -28,6 +28,7 @@ import com.example.data.model.CustomerEntity
 import com.example.localization.AppLanguage
 import com.example.localization.AppStrings
 import com.example.ui.components.HisabTopAppBar
+import com.example.ui.components.TransactionDateField
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.HisabViewModel
 import com.example.util.rememberSingleKeyFilter
@@ -46,6 +47,7 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
     var remarks by remember { mutableStateOf("") }
     var paymentMethod by remember { mutableStateOf("CASH") }
     var billNo by remember { mutableStateOf("") }
+    var transactionDateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     var showNewCustomerDialog by remember { mutableStateOf(false) }
     var showQuickAmountDialog by remember { mutableStateOf(false) }
@@ -568,6 +570,15 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    TransactionDateField(
+                        dateMillis = transactionDateMillis,
+                        onDateSelected = { transactionDateMillis = it },
+                        label = AppStrings.get("transaction_date", language),
+                        testTag = "add_txn_date_input"
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     OutlinedTextField(
                         value = billNo,
                         onValueChange = { billNo = it },
@@ -600,7 +611,8 @@ fun AddTransactionScreen(viewModel: HisabViewModel) {
                             type = txnType,
                             amount = amount,
                             remarks = remarks,
-                            paymentMethod = paymentMethod
+                            paymentMethod = paymentMethod,
+                            dateMillis = transactionDateMillis
                         )
                     }
                 },

@@ -43,6 +43,7 @@ class ExampleUnitTest {
             "alternative_mobile",
             "whatsapp_number",
             "invalid_mobile_10_digits",
+            "transaction_date",
             "reminder_title",
             "receipt_title",
             "backup_restore",
@@ -122,5 +123,19 @@ class ExampleUnitTest {
         assertEquals("9822222222", customer.secondaryPhone)
         assertEquals("9833333333", customer.alternativePhone)
         assertEquals("9844444444", customer.whatsapp)
+    }
+
+    @Test
+    fun testTransactionDateConversionPreservesDay() {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(2026, java.util.Calendar.NOVEMBER, 15, 14, 30, 0)
+        }
+        val utcMidnight = com.example.ui.components.localMillisToUtcMidnight(cal.timeInMillis)
+        val restoredLocal = com.example.ui.components.utcMidnightToLocalMillis(utcMidnight, cal.timeInMillis)
+        val restoredCal = java.util.Calendar.getInstance().apply { timeInMillis = restoredLocal }
+
+        assertEquals(2026, restoredCal.get(java.util.Calendar.YEAR))
+        assertEquals(java.util.Calendar.NOVEMBER, restoredCal.get(java.util.Calendar.MONTH))
+        assertEquals(15, restoredCal.get(java.util.Calendar.DAY_OF_MONTH))
     }
 }
